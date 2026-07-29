@@ -179,7 +179,10 @@ app.post('/api/auth/send-otp', async (req, res) => {
     email: normalizedEmail,
     emailSentReal,
     emailError: emailErrorMessage || undefined,
-    message: `ส่งรหัสยืนยัน OTP ไปยังอีเมล ${normalizedEmail} เรียบร้อยแล้ว`,
+    otp: code,
+    message: emailSentReal
+      ? `ส่งรหัสยืนยัน OTP ไปยังอีเมล ${normalizedEmail} เรียบร้อยแล้ว`
+      : `ระบบสร้างรหัส OTP (${code}) เรียบร้อยแล้ว`,
   });
 });
 

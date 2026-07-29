@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityItem, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
+import { ActivityItem, AdminRole, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
 import {
   saveAttendeeToFirestore,
   deleteAttendeeFromFirestore,
@@ -137,7 +137,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Admin Modal state
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminFormData, setAdminFormData] = useState({ username: '', name: '', email: '' });
+  const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+  const [adminFormData, setAdminFormData] = useState<{
+    username: string;
+    name: string;
+    email: string;
+    role: AdminRole;
+  }>({ username: '', name: '', email: '', role: 'admin' });
 
   // Activity Modal state
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -356,25 +362,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setSuperAdminPasswordError('');
   };
 
-  // Add Admin (Super Admin only)
+  // Open Admin Modal for Add/Edit
+  const handleOpenAdminModal = (adm?: AdminUser) => {
+    if (adm) {
+      setEditingAdminId(adm.id);
+      setAdminFormData({
+        username: adm.username,
+        name: adm.name,
+        email: adm.email,
+        role: adm.role,
+      });
+    } else {
+      setEditingAdminId(null);
+      setAdminFormData({
+        username: '',
+        name: '',
+        email: '',
+        role: 'admin',
+      });
+    }
+    setShowAdminModal(true);
+  };
+
+  // Add/Edit Admin (Super Admin only)
   const handleSaveAdmin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminFormData.username || !adminFormData.name || !adminFormData.email) return;
 
-    const newAdmin: AdminUser = {
-      id: `adm-${Date.now()}`,
-      username: adminFormData.username.trim(),
-      name: adminFormData.name.trim(),
-      email: adminFormData.email.trim(),
-      role: 'admin',
-      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
-    };
+    if (editingAdminId) {
+      let updatedAdminItem: AdminUser | null = null;
+      const updatedList = admins.map((a) => {
+        if (a.id === editingAdminId) {
+          updatedAdminItem = {
+            ...a,
+            username: adminFormData.username.trim(),
+            name: adminFormData.name.trim(),
+            email: adminFormData.email.trim(),
+            role: adminFormData.role,
+          };
+          return updatedAdminItem;
+        }
+        return a;
+      });
+      setAdmins(updatedList);
+      if (updatedAdminItem) {
+        saveAdminToFirestore(updatedAdminItem);
+      }
+      addAuditLog(
+        'แก้ไขข้อมูล Admin',
+        `ปรับปรุงข้อมูลแอดมิน (${adminFormData.username} - ${adminFormData.name}, บทบาท: ${adminFormData.role})`
+      );
+    } else {
+      const newAdmin: AdminUser = {
+        id: `adm-${Date.now()}`,
+        username: adminFormData.username.trim(),
+        name: adminFormData.name.trim(),
+        email: adminFormData.email.trim(),
+        role: adminFormData.role,
+        createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      };
 
-    setAdmins([...admins, newAdmin]);
-    saveAdminToFirestore(newAdmin);
+      setAdmins([...admins, newAdmin]);
+      saveAdminToFirestore(newAdmin);
+      addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่ (${newAdmin.username} - ${newAdmin.name})`);
+    }
+
     setShowAdminModal(false);
-    setAdminFormData({ username: '', name: '', email: '' });
-    addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่ (${newAdmin.username} - ${newAdmin.name})`);
+    setEditingAdminId(null);
+    setAdminFormData({ username: '', name: '', email: '', role: 'admin' });
   };
 
   const handleDeleteAdmin = (id: string, username: string) => {
@@ -936,7 +991,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowAdminModal(true)}
+                  onClick={() => handleOpenAdminModal()}
                   className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
@@ -976,13 +1031,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </span>
                         </td>
                         <td className="px-4 py-3 text-slate-500 text-xs">{adm.createdAt}</td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                          <button
+                            onClick={() => handleOpenAdminModal(adm)}
+                            className="p-1.5 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1 font-bold text-xs"
+                            title="แก้ไขข้อมูล Admin"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>แก้ไข</span>
+                          </button>
                           {adm.username !== 'admin' && (
                             <button
                               onClick={() => handleDeleteAdmin(adm.id, adm.username)}
-                              className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg cursor-pointer transition-colors"
+                              className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg cursor-pointer transition-colors inline-flex items-center gap-1 font-bold text-xs"
+                              title="ลบ Admin"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>ลบ</span>
                             </button>
                           )}
                         </td>
@@ -1409,7 +1474,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-            <h4 className="text-lg font-bold text-slate-900 mb-4">เพิ่มผู้ดูแลระบบ (Admin) ใหม่</h4>
+            <h4 className="text-lg font-bold text-slate-900 mb-4">
+              {editingAdminId ? 'แก้ไขข้อมูลผู้ดูแลระบบ (Admin)' : 'เพิ่มผู้ดูแลระบบ (Admin) ใหม่'}
+            </h4>
             <form onSubmit={handleSaveAdmin} className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Username</label>
@@ -1444,11 +1511,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">บทบาทสิทธิ์การใช้งาน (Role)</label>
+                <select
+                  value={adminFormData.role}
+                  onChange={(e) => setAdminFormData({ ...adminFormData, role: e.target.value as AdminRole })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500 font-medium"
+                >
+                  <option value="admin">admin (ผู้ดูแลระบบทั่วไป / สแกนเช็คอิน)</option>
+                  <option value="super_admin">super_admin (ผู้ดูแลระบบสูงสุด)</option>
+                </select>
+              </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm rounded-xl shadow cursor-pointer"
+                className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-[1.02] active:scale-95"
               >
-                บันทึกแอดมินใหม่
+                {editingAdminId ? 'บันทึกการแก้ไขข้อมูล Admin' : 'บันทึกแอดมินใหม่'}
               </button>
             </form>
           </div>

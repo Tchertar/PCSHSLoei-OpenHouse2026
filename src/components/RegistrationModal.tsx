@@ -64,6 +64,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   // OTP State
   const [otpCode, setOtpCode] = useState('');
   const [sentOtp, setSentOtp] = useState<string | null>(null);
+  const [emailSentReal, setEmailSentReal] = useState<boolean>(false);
   const [otpError, setOtpError] = useState('');
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -133,10 +134,12 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       const data = await res.json();
       if (data.success && data.otp) {
         setSentOtp(data.otp);
+        setEmailSentReal(!!data.emailSentReal);
       } else {
         // Fallback local OTP
         const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
         setSentOtp(fallbackCode);
+        setEmailSentReal(false);
       }
 
       setStep('otp');
@@ -145,6 +148,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       console.warn('API send OTP error, using fallback:', err);
       const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
       setSentOtp(fallbackCode);
+      setEmailSentReal(false);
       setStep('otp');
       startCooldown();
     } finally {
@@ -181,14 +185,17 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       const data = await res.json();
       if (data.success && data.otp) {
         setSentOtp(data.otp);
+        setEmailSentReal(!!data.emailSentReal);
       } else {
         const newCode = Math.floor(100000 + Math.random() * 900000).toString();
         setSentOtp(newCode);
+        setEmailSentReal(false);
       }
       startCooldown();
     } catch {
       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
       setSentOtp(newCode);
+      setEmailSentReal(false);
       startCooldown();
     } finally {
       setLoading(false);
@@ -598,20 +605,50 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
             /* STEP 2: Email OTP Verification Step */
             <form onSubmit={handleVerifyOtpSubmit} className="space-y-6 text-left max-w-md mx-auto py-2">
               
-              {/* Real Email Sent Notification Banner */}
-              <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-blue-500/30 space-y-2 text-center">
-                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-blue-400/30">
-                  <Mail className="w-6 h-6 text-blue-400 animate-bounce" />
+              {/* Email Sent / Preview OTP Notification Banner */}
+              {emailSentReal ? (
+                <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-emerald-500/30 space-y-2 text-center">
+                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-emerald-400/30">
+                    <Mail className="w-6 h-6 text-emerald-400 animate-bounce" />
+                  </div>
+                  <h3 className="font-bold text-base text-white">
+                    ส่งรหัสยืนยัน OTP ไปยังอีเมลของคุณเรียบร้อยแล้ว
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    ระบบได้ส่งรหัสยืนยัน OTP 6 หลัก ไปยังอีเมล{' '}
+                    <strong className="text-amber-300 font-mono text-sm underline">{formData.email}</strong> แล้ว<br />
+                    กรุณาเปิดเช็กใน <span className="text-white font-semibold">กล่องข้อความ (Inbox)</span> หรือ <span className="text-white font-semibold">จดหมายขยะ (Junk / Spam)</span>
+                  </p>
                 </div>
-                <h3 className="font-bold text-base text-white">
-                  ส่งรหัสยืนยัน OTP ไปยังอีเมลของคุณแล้ว
-                </h3>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  ระบบได้ส่งรหัสยืนยัน OTP 6 หลัก ไปยังอีเมล{' '}
-                  <strong className="text-amber-300 font-mono text-sm underline">{formData.email}</strong> แล้ว<br />
-                  กรุณาเปิดเช็กใน <span className="text-white font-semibold">กล่องข้อความ (Inbox)</span> หรือ <span className="text-white font-semibold">จดหมายขยะ (Junk / Spam)</span>
-                </p>
-              </div>
+              ) : (
+                <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-amber-500/40 space-y-3 text-center">
+                  <div className="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-amber-400/30">
+                    <KeyRound className="w-6 h-6 text-amber-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-amber-200 uppercase tracking-wide">
+                      รหัสยืนยันตัวตน OTP สำหรับลงทะเบียน
+                    </span>
+                    <h3 className="font-black text-2xl text-amber-300 font-mono tracking-widest mt-1">
+                      {sentOtp || '------'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    ℹ️ ระบบยังไม่ได้ตั้งค่าบัญชี SMTP Email Server สำหรับส่งอีเมลจริง<br />
+                    ท่านสามารถนำรหัส <strong className="text-amber-300 font-mono">{sentOtp}</strong> กรอกในช่องด้านล่าง หรือกดปุ่มเติมรหัสเพื่อยืนยันตัวตนได้ทันที
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sentOtp) setOtpCode(sentOtp);
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-900 font-black text-xs rounded-xl shadow cursor-pointer transition-transform hover:scale-105 active:scale-95 inline-flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-4 h-4 text-slate-900" />
+                    <span>⚡ คลิกเพื่อใส่รหัส {sentOtp} อัตโนมัติ</span>
+                  </button>
+                </div>
+              )}
 
               {/* OTP Error Message */}
               {otpError && (
