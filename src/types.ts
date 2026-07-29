@@ -19,6 +19,8 @@ export interface Attendee {
   checkedIn: boolean;
   checkedInAt?: string;
   qrCodeData: string;
+  googleId?: string;
+  photoUrl?: string;
 }
 
 export type AdminRole = 'super_admin' | 'admin';

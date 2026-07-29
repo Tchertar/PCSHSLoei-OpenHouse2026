@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Attendee, AttendeeStatus, TransportMethod } from '../types';
+import { GoogleUserProfile } from '../lib/googleAuth';
 import { CheckCircle2, Loader2, Sparkles, UserCheck, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -7,6 +8,7 @@ interface RegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   existingAttendees?: Attendee[];
+  initialGoogleUser?: GoogleUserProfile | null;
   onRegisterSuccess: (newAttendee: Attendee, isExisting?: boolean) => void;
 }
 
@@ -20,10 +22,12 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   isOpen,
   onClose,
   existingAttendees = [],
+  initialGoogleUser,
   onRegisterSuccess,
 }) => {
   const [googleStep, setGoogleStep] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
+  const [googleUserObj, setGoogleUserObj] = useState<GoogleUserProfile | null>(null);
   const [emailInput, setEmailInput] = useState('');
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,6 +43,19 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
     attendeeCount: 1,
     transportMethod: 'รถส่วนตัว' as TransportMethod,
   });
+
+  useEffect(() => {
+    if (initialGoogleUser) {
+      setGoogleEmail(initialGoogleUser.email);
+      setGoogleUserObj(initialGoogleUser);
+      setFormData((prev) => ({
+        ...prev,
+        firstName: initialGoogleUser.firstName || prev.firstName,
+        lastName: initialGoogleUser.lastName || prev.lastName,
+      }));
+      setGoogleStep(true);
+    }
+  }, [initialGoogleUser]);
 
   if (!isOpen) return null;
 
@@ -119,6 +136,8 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
         registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         checkedIn: false,
         qrCodeData: participantCode,
+        googleId: googleUserObj?.googleId || `g_${Date.now()}`,
+        photoUrl: googleUserObj?.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}+${encodeURIComponent(formData.lastName)}&background=0D8ABC&color=fff`,
       };
 
       // REQUIREMENT 2:
