@@ -8,7 +8,7 @@ import {
   onSnapshot, 
   query 
 } from 'firebase/firestore';
-import { Attendee } from '../types';
+import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -16,8 +16,12 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
 const ATTENDEES_COLLECTION = 'attendees';
+const ADMINS_COLLECTION = 'admins';
+const ACTIVITIES_COLLECTION = 'activities';
+const AUDIT_LOGS_COLLECTION = 'audit_logs';
+const MAP_BUILDINGS_COLLECTION = 'map_buildings';
 
-// Subscribe to real-time list of attendees from Firestore
+// --- ATTENDEES ---
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(q, (snapshot) => {
@@ -25,7 +29,6 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
     snapshot.forEach((docSnap) => {
       list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
     });
-    // Sort by registeredAt desc
     list.sort((a, b) => (b.registeredAt || '').localeCompare(a.registeredAt || ''));
     callback(list);
   }, (err) => {
@@ -33,7 +36,6 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   });
 };
 
-// Save single attendee to Firestore
 export const saveAttendeeToFirestore = async (attendee: Attendee) => {
   try {
     const docId = attendee.id || `att_${attendee.participantCode.replace(/[^a-zA-Z0-9]/g, '_')}`;
@@ -50,7 +52,6 @@ export const saveAttendeeToFirestore = async (attendee: Attendee) => {
   }
 };
 
-// Batch seed or bulk save attendees
 export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => {
   try {
     for (const attendee of attendeesList) {
@@ -61,11 +62,165 @@ export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => 
   }
 };
 
-// Delete attendee from Firestore
 export const deleteAttendeeFromFirestore = async (id: string) => {
   try {
     await deleteDoc(doc(db, ATTENDEES_COLLECTION, id));
   } catch (err) {
     console.error("Error deleting attendee from Firestore:", err);
+  }
+};
+
+// --- ADMINS ---
+export const subscribeAdmins = (callback: (data: AdminUser[]) => void) => {
+  const q = query(collection(db, ADMINS_COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    const list: AdminUser[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as AdminUser);
+    });
+    callback(list);
+  }, (err) => {
+    console.error("Firestore admins subscription error:", err);
+  });
+};
+
+export const saveAdminToFirestore = async (admin: AdminUser) => {
+  try {
+    const docId = admin.id || `adm_${admin.username}`;
+    const docRef = doc(db, ADMINS_COLLECTION, docId);
+    await setDoc(docRef, { ...admin, id: docId, updatedAt: new Date().toISOString() }, { merge: true });
+    return docId;
+  } catch (err) {
+    console.error("Error saving admin to Firestore:", err);
+  }
+};
+
+export const saveAllAdminsToFirestore = async (adminsList: AdminUser[]) => {
+  try {
+    for (const admin of adminsList) {
+      await saveAdminToFirestore(admin);
+    }
+  } catch (err) {
+    console.error("Error bulk saving admins to Firestore:", err);
+  }
+};
+
+export const deleteAdminFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, ADMINS_COLLECTION, id));
+  } catch (err) {
+    console.error("Error deleting admin from Firestore:", err);
+  }
+};
+
+// --- ACTIVITIES ---
+export const subscribeActivities = (callback: (data: ActivityItem[]) => void) => {
+  const q = query(collection(db, ACTIVITIES_COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    const list: ActivityItem[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as ActivityItem);
+    });
+    callback(list);
+  }, (err) => {
+    console.error("Firestore activities subscription error:", err);
+  });
+};
+
+export const saveActivityToFirestore = async (activity: ActivityItem) => {
+  try {
+    const docId = activity.id || `act_${Date.now()}`;
+    const docRef = doc(db, ACTIVITIES_COLLECTION, docId);
+    await setDoc(docRef, { ...activity, id: docId, updatedAt: new Date().toISOString() }, { merge: true });
+    return docId;
+  } catch (err) {
+    console.error("Error saving activity to Firestore:", err);
+  }
+};
+
+export const saveAllActivitiesToFirestore = async (activitiesList: ActivityItem[]) => {
+  try {
+    for (const activity of activitiesList) {
+      await saveActivityToFirestore(activity);
+    }
+  } catch (err) {
+    console.error("Error bulk saving activities to Firestore:", err);
+  }
+};
+
+export const deleteActivityFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, ACTIVITIES_COLLECTION, id));
+  } catch (err) {
+    console.error("Error deleting activity from Firestore:", err);
+  }
+};
+
+// --- AUDIT LOGS ---
+export const subscribeAuditLogs = (callback: (data: AuditLog[]) => void) => {
+  const q = query(collection(db, AUDIT_LOGS_COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    const list: AuditLog[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
+    });
+    list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+    callback(list);
+  }, (err) => {
+    console.error("Firestore audit logs subscription error:", err);
+  });
+};
+
+export const saveAuditLogToFirestore = async (log: AuditLog) => {
+  try {
+    const docId = log.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const docRef = doc(db, AUDIT_LOGS_COLLECTION, docId);
+    await setDoc(docRef, { ...log, id: docId }, { merge: true });
+    return docId;
+  } catch (err) {
+    console.error("Error saving audit log to Firestore:", err);
+  }
+};
+
+export const saveAllAuditLogsToFirestore = async (logsList: AuditLog[]) => {
+  try {
+    for (const log of logsList) {
+      await saveAuditLogToFirestore(log);
+    }
+  } catch (err) {
+    console.error("Error bulk saving audit logs to Firestore:", err);
+  }
+};
+
+// --- MAP BUILDINGS ---
+export const subscribeMapBuildings = (callback: (data: any[]) => void) => {
+  const q = query(collection(db, MAP_BUILDINGS_COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    const list: any[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    callback(list);
+  }, (err) => {
+    console.error("Firestore map buildings subscription error:", err);
+  });
+};
+
+export const saveMapBuildingToFirestore = async (b: any) => {
+  try {
+    const docId = b.id || `b_${Date.now()}`;
+    const docRef = doc(db, MAP_BUILDINGS_COLLECTION, docId);
+    await setDoc(docRef, { ...b, id: docId }, { merge: true });
+    return docId;
+  } catch (err) {
+    console.error("Error saving map building to Firestore:", err);
+  }
+};
+
+export const deleteMapBuildingFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, MAP_BUILDINGS_COLLECTION, id));
+  } catch (err) {
+    console.error("Error deleting map building from Firestore:", err);
   }
 };

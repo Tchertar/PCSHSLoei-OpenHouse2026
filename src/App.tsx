@@ -226,11 +226,11 @@ export default function App() {
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
           onLogout={handleLogout}
-          onRegisterClick={() => setIsAccountChooserOpen(true)}
+          onRegisterClick={() => setIsRegisterOpen(true)}
         />
 
         {/* Hero Full-width Banner */}
-        <Banner onRegisterClick={() => setIsAccountChooserOpen(true)} />
+        <Banner onRegisterClick={() => setIsRegisterOpen(true)} />
 
         {/* Live Event Countdown Timer */}
         <CountdownTimer />
@@ -265,12 +265,22 @@ export default function App() {
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                {/* Prominent Google Sign-In Button */}
+                {/* Standard Registration Button */}
                 <button
-                  onClick={() => setIsAccountChooserOpen(true)}
+                  onClick={() => setIsRegisterOpen(true)}
                   className="w-full sm:w-auto px-10 py-5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-lg sm:text-xl rounded-2xl shadow-2xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-3 group border border-orange-400/40 animate-pulse-glow"
                 >
-                  <svg className="w-6 h-6 bg-white p-0.5 rounded-full" viewBox="0 0 24 24">
+                  <Sparkles className="w-6 h-6 text-amber-200" />
+                  <span>ลงทะเบียนเข้าร่วมงาน (สร้างบัญชีผู้ใช้)</span>
+                  <ArrowRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
+                </button>
+
+                {/* Google Sign-in Option */}
+                <button
+                  onClick={() => setIsAccountChooserOpen(true)}
+                  className="w-full sm:w-auto px-6 py-5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-base rounded-2xl shadow-lg border border-slate-300 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path
                       fill="#4285F4"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -288,8 +298,7 @@ export default function App() {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                     />
                   </svg>
-                  <span>Sign in with Google เพื่อลงทะเบียน</span>
-                  <ArrowRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
+                  <span>Google Sign-In</span>
                 </button>
               </div>
             )}
@@ -329,7 +338,6 @@ export default function App() {
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
         existingAttendees={attendees}
-        initialGoogleUser={selectedGoogleUser}
         onRegisterSuccess={handleRegisterSuccess}
       />
 

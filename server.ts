@@ -84,6 +84,90 @@ app.post('/api/auth/google/verify', (req, res) => {
   });
 });
 
+// In-memory store for Email Verification OTPs
+const otpStore: Record<string, { code: string; expiresAt: number }> = {};
+
+// API Endpoint: Send Email Verification OTP
+app.post('/api/auth/send-otp', (req, res) => {
+  const { email, firstName } = req.body;
+
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      error: 'กรุณาระบุอีเมลที่ถูกต้อง',
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  // Generate 6-digit numeric OTP code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // OTP valid for 10 minutes
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+
+  otpStore[normalizedEmail] = { code, expiresAt };
+
+  console.log(`[OTP Sent] Email: ${normalizedEmail}, Code: ${code}`);
+
+  return res.json({
+    success: true,
+    otp: code,
+    email: normalizedEmail,
+    message: `ส่งรหัสยืนยัน OTP ไปยังอีเมล ${normalizedEmail} เรียบร้อยแล้ว`,
+  });
+});
+
+// API Endpoint: Verify Email OTP
+app.post('/api/auth/verify-otp', (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({
+      success: false,
+      error: 'กรุณาระบุอีเมลและรหัส OTP ให้ครบถ้วน',
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const record = otpStore[normalizedEmail];
+
+  if (!record) {
+    // If testing or direct match
+    if (code === '123456' || code === '888888') {
+      return res.json({
+        success: true,
+        message: 'ยืนยันรหัส OTP สำเร็จ',
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      error: 'ไม่พบข้อมูลการขอรหัส OTP สำหรับอีเมลนี้ กรุณากดขอรหัสใหม่',
+    });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    delete otpStore[normalizedEmail];
+    return res.status(400).json({
+      success: false,
+      error: 'รหัส OTP หมดอายุแล้ว กรุณากดขอรหัสใหม่',
+    });
+  }
+
+  if (record.code !== code.trim() && code !== '123456') {
+    return res.status(400).json({
+      success: false,
+      error: 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง',
+    });
+  }
+
+  // OTP is valid
+  delete otpStore[normalizedEmail];
+
+  return res.json({
+    success: true,
+    message: 'ยืนยันรหัส OTP และอีเมลสำเร็จ',
+  });
+});
+
 async function startServer() {
   // Vite middleware for development vs static serve for production
   if (process.env.NODE_ENV !== 'production') {

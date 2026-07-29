@@ -6,6 +6,8 @@ export interface Attendee {
   id: string;
   participantCode: string;
   email: string;
+  password?: string;
+  isVerified?: boolean;
   firstName: string;
   lastName: string;
   phone: string;

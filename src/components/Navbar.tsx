@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, ChevronDown, HelpCircle, LogOut, Map, Menu, Shield, UserCheck, X, Trophy } from 'lucide-react';
+import { Calendar, ChevronDown, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;
@@ -156,23 +156,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {/* Single Primary Action: Sign in with Google (OAuth 2.0) */}
                 <button
                   onClick={onRegisterClick}
-                  className="flex items-center gap-2.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm px-4.5 py-2.5 rounded-xl border border-slate-300 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer ring-2 ring-blue-500/10 hover:ring-blue-500/30"
+                  className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-4.5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                 >
-                  <GoogleLogoSVG />
-                  <span>Sign in with Google</span>
+                  <UserCheck className="w-4 h-4 text-white" />
+                  <span>ลงทะเบียนเข้าร่วมงาน</span>
                 </button>
 
-                {/* Admin Portal Direct Link */}
                 <button
                   onClick={onOpenLogin}
-                  title="สำหรับผู้ดูแลระบบ (Admin)"
-                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 cursor-pointer transition-colors"
+                  title="เข้าสู่ระบบ"
+                  className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-200 cursor-pointer transition-colors"
                 >
-                  <Shield className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Admin</span>
+                  <LogIn className="w-3.5 h-3.5 text-slate-600" />
+                  <span>เข้าสู่ระบบ</span>
                 </button>
               </div>
             )}
@@ -262,19 +260,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onRegisterClick();
                   }}
-                  className="w-full py-3 bg-white text-slate-900 border border-slate-300 font-bold text-base rounded-xl shadow-md flex items-center justify-center gap-3"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-base rounded-xl shadow-md flex items-center justify-center gap-2"
                 >
-                  <GoogleLogoSVG />
-                  <span>Sign in with Google (OAuth 2.0)</span>
+                  <UserCheck className="w-5 h-5" />
+                  <span>ลงทะเบียนเข้าร่วมงาน</span>
                 </button>
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
                     onOpenLogin();
                   }}
-                  className="w-full py-2.5 bg-slate-100 text-slate-700 font-medium text-sm rounded-xl border border-slate-200"
+                  className="w-full py-2.5 bg-slate-100 text-slate-800 font-bold text-sm rounded-xl border border-slate-200 flex items-center justify-center gap-2"
                 >
-                  ระบบผู้ดูแลระบบ (Admin)
+                  <LogIn className="w-4 h-4 text-slate-600" />
+                  <span>เข้าสู่ระบบ</span>
                 </button>
               </div>
             )}

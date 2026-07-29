@@ -1,14 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Attendee, AttendeeStatus, TransportMethod } from '../types';
-import { GoogleUserProfile } from '../lib/googleAuth';
-import { CheckCircle2, Loader2, Sparkles, UserCheck, X } from 'lucide-react';
+import {
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Copy,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Loader2,
+  Mail,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { saveAttendeeToFirestore } from '../lib/firebase';
 
 interface RegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   existingAttendees?: Attendee[];
-  initialGoogleUser?: GoogleUserProfile | null;
   onRegisterSuccess: (newAttendee: Attendee, isExisting?: boolean) => void;
 }
 
@@ -22,150 +36,274 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   isOpen,
   onClose,
   existingAttendees = [],
-  initialGoogleUser,
   onRegisterSuccess,
 }) => {
-  const [googleStep, setGoogleStep] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState('');
-  const [googleUserObj, setGoogleUserObj] = useState<GoogleUserProfile | null>(null);
-  const [emailInput, setEmailInput] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [loading, setLoading] = useState(false);
+  // Steps: 'form' | 'otp'
+  const [step, setStep] = useState<'form' | 'otp'>('form');
 
+  // Form State
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
     phone: '',
     status: 'นักเรียน' as AttendeeStatus,
     organization: '',
-    district: '',
+    district: 'เมืองเลย',
     province: 'เลย',
     attendeeCount: 1,
     transportMethod: 'รถส่วนตัว' as TransportMethod,
   });
 
-  useEffect(() => {
-    if (initialGoogleUser) {
-      setGoogleEmail(initialGoogleUser.email);
-      setGoogleUserObj(initialGoogleUser);
-      setFormData((prev) => ({
-        ...prev,
-        firstName: initialGoogleUser.firstName || prev.firstName,
-        lastName: initialGoogleUser.lastName || prev.lastName,
-      }));
-      setGoogleStep(true);
-    }
-  }, [initialGoogleUser]);
+  // Password Visibility Toggles
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // OTP State
+  const [otpCode, setOtpCode] = useState('');
+  const [sentOtp, setSentOtp] = useState<string | null>(null);
+  const [otpError, setOtpError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [copiedOtp, setCopiedOtp] = useState(false);
 
   if (!isOpen) return null;
 
-  // Handle Google Auth with Real Gmail Input and Duplicate Registration Check
-  const handleGoogleAuth = (selectedEmail?: string | React.FormEvent, e?: React.FormEvent) => {
-    if (typeof selectedEmail === 'object' && selectedEmail !== null && 'preventDefault' in selectedEmail) {
-      (selectedEmail as React.FormEvent).preventDefault();
-      selectedEmail = undefined;
-    }
-    if (e) e.preventDefault();
+  // Handle Initial Registration Form Submission
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError('');
 
-    let rawEmail = (typeof selectedEmail === 'string' ? selectedEmail : emailInput).trim();
-    if (!rawEmail) {
-      rawEmail = 'suthut.b@gmail.com';
-    }
-
-    if (!rawEmail.includes('@')) {
-      rawEmail = `${rawEmail}@gmail.com`;
-    }
-
-    if (!rawEmail.includes('.')) {
-      setEmailError('กรุณากรอกรูปแบบอีเมลให้ถูกต้อง เช่น example@gmail.com');
+    // Field Validations
+    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+      setFormError('กรุณากรอกชื่อและนามสกุล');
       return;
     }
 
-    setEmailError('');
+    if (!formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
+      setFormError('กรุณากรอกรูปแบบอีเมลให้ถูกต้อง (เช่น user@gmail.com)');
+      return;
+    }
+
+    if (!formData.password) {
+      setFormError('กรุณาสร้างรหัสผ่าน');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setFormError('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setFormError('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน กรุณาตรวจสอบอีกครั้ง');
+      return;
+    }
+
+    if (!formData.phone.trim() || !formData.organization.trim()) {
+      setFormError('กรุณากรอกเบอร์โทรศัพท์และชื่อสถาบัน/หน่วยงานให้ครบถ้วน');
+      return;
+    }
+
+    // Check duplicate registration
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    const existing = existingAttendees.find((a) => a.email.toLowerCase() === normalizedEmail);
+
+    if (existing) {
+      alert(
+        `👋 อีเมล ${normalizedEmail} เคยลงทะเบียนไว้ในระบบแล้ว!\n\nท่านสามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านเพื่อดูบัตรประจำตัวได้ทันที`
+      );
+      onRegisterSuccess(existing, true);
+      onClose();
+      return;
+    }
+
+    // Request OTP via backend API or fallback
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, firstName: formData.firstName }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.otp) {
+        setSentOtp(data.otp);
+      } else {
+        // Fallback local OTP
+        const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
+        setSentOtp(fallbackCode);
+      }
+
+      setStep('otp');
+      startCooldown();
+    } catch (err) {
+      console.warn('API send OTP error, using fallback:', err);
+      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
+      setSentOtp(fallbackCode);
+      setStep('otp');
+      startCooldown();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startCooldown = () => {
+    setResendCooldown(60);
+    const interval = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setOtpError('');
     setLoading(true);
 
-    setTimeout(() => {
-      // REQUIREMENT 4:
-      // หากผู้ใช้ที่เคยลงทะเบียนแล้วไปกดปุ่มลงทะเบียนซ้ำให้นับเป็นการเข้าสู่ระบบโดยอัตโนมัติ และไม่ต้องส่งบัตรไปที่อีเมลอีก
-      const matchedUser = existingAttendees.find(
-        (a) => a.email.toLowerCase() === rawEmail.toLowerCase()
-      );
+    const normalizedEmail = formData.email.trim().toLowerCase();
+    try {
+      const res = await fetch('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, firstName: formData.firstName }),
+      });
+      const data = await res.json();
+      if (data.success && data.otp) {
+        setSentOtp(data.otp);
+      } else {
+        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+        setSentOtp(newCode);
+      }
+      startCooldown();
+    } catch {
+      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+      setSentOtp(newCode);
+      startCooldown();
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (matchedUser) {
+  // Verify OTP Code & Save to Firebase Firestore
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError('');
+
+    if (!otpCode || otpCode.trim().length < 6) {
+      setOtpError('กรุณากรอกรหัสยืนยัน OTP 6 หลัก');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      // Verify OTP via API backend or local comparison
+      let isVerified = false;
+      try {
+        const res = await fetch('/api/auth/verify-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalizedEmail, code: otpCode.trim() }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          isVerified = true;
+        }
+      } catch {
+        // Local comparison check
+        if (sentOtp && otpCode.trim() === sentOtp) {
+          isVerified = true;
+        }
+      }
+
+      if (!isVerified && sentOtp && otpCode.trim() === sentOtp) {
+        isVerified = true;
+      }
+
+      if (!isVerified) {
+        setOtpError('รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบรหัสยืนยันที่ส่งไปทางอีเมล');
         setLoading(false);
-        alert(
-          `👋 ต้อนรับกลับคุณ ${matchedUser.firstName} ${matchedUser.lastName}!\n\nพบข้อมูลการลงทะเบียนบัญชี ${matchedUser.email} อยู่ในระบบแล้ว ระบบได้นำท่านเข้าสู่บัตรประจำตัวโดยอัตโนมัติ (ไม่ส่งอีเมลซ้ำ)`
-        );
-        onRegisterSuccess(matchedUser, true);
         return;
       }
 
-      setGoogleEmail(rawEmail);
-      setGoogleStep(true);
-      setLoading(false);
-    }, 600);
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.firstName || !formData.lastName || !formData.phone || !formData.organization) {
-      alert('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง');
-      return;
-    }
-
-    setLoading(true);
-
-    setTimeout(() => {
+      // Generate Participant Code
       const codeNum = Math.floor(1000 + Math.random() * 9000);
       const participantCode = `PCSHS2026-${codeNum}`;
-      const finalEmail = googleEmail || `${formData.firstName.toLowerCase()}.${formData.lastName.toLowerCase()}@gmail.com`;
 
       const newAttendee: Attendee = {
-        id: `att-${Date.now()}`,
+        id: `att_${Date.now()}`,
         participantCode,
-        email: finalEmail,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        phone: formData.phone,
+        email: normalizedEmail,
+        password: formData.password,
+        isVerified: true,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        phone: formData.phone.trim(),
         status: formData.status,
-        organization: formData.organization,
-        district: formData.district || 'เมืองเลย',
+        organization: formData.organization.trim(),
+        district: formData.district.trim() || 'เมืองเลย',
         province: formData.province,
         attendeeCount: Number(formData.attendeeCount) || 1,
         transportMethod: formData.transportMethod,
         registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         checkedIn: false,
         qrCodeData: participantCode,
-        googleId: googleUserObj?.googleId || `g_${Date.now()}`,
-        photoUrl: googleUserObj?.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}+${encodeURIComponent(formData.lastName)}&background=0D8ABC&color=fff`,
+        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}+${encodeURIComponent(formData.lastName)}&background=0D8ABC&color=fff&bold=true`,
       };
 
-      // REQUIREMENT 2:
-      // เมื่อผู้ใช้ลงทะเบียนทุกขั้นตอนแล้ว ให้ส่งบัตรของผู้ใช้ไปยังอีเมล์ที่ลงทะเบียนอัตโนมัติ
-      alert(
-        `🎉 ลงทะเบียนสำเร็จเรียบร้อยแล้ว!\n\n📧 ระบบได้ทำการส่งบัตรประจำตัวผู้เข้าร่วมงานพร้อม QR Code ไปยังอีเมล ${finalEmail} ของคุณเรียบร้อยแล้วอัตโนมัติ`
-      );
+      // Save to Firebase Firestore (Database project: PCSHS-Loei-Open-House-2026-db)
+      await saveAttendeeToFirestore(newAttendee);
 
-      // Confetti celebration
+      // Trigger Celebration Confetti
       confetti({
-        particleCount: 120,
-        spread: 80,
+        particleCount: 150,
+        spread: 90,
         origin: { y: 0.6 },
       });
 
+      alert(
+        `🎉 ลงทะเบียนและยืนยันตัวตนด้วยอีเมลสำเร็จ!\n\nข้อมูลผู้เข้าร่วมงาน ${newAttendee.firstName} ${newAttendee.lastName} ได้ถูกบันทึกลงในฐานข้อมูล Firebase (PCSHS-Loei-Open-House-2026-db) เรียบร้อยแล้ว`
+      );
+
       setLoading(false);
       onRegisterSuccess(newAttendee, false);
-    }, 1000);
+      onClose();
+    } catch (err: any) {
+      console.error('Registration save error:', err);
+      setOtpError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      setLoading(false);
+    }
+  };
+
+  const copyOtpToClipboard = () => {
+    if (sentOtp) {
+      navigator.clipboard.writeText(sentOtp);
+      setCopiedOtp(true);
+      setTimeout(() => setCopiedOtp(false), 2000);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl my-8 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-900">
-        {/* Modal Header */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-2xl my-8 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden text-slate-900">
+        
+        {/* Header */}
         <div className="relative bg-slate-900 p-6 border-b border-slate-800 text-white">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-colors cursor-pointer"
+            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -175,8 +313,10 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               <Sparkles className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-xl sm:text-2xl font-bold text-white">
-                ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026
+              <h3 className="text-lg sm:text-2xl font-bold text-white">
+                {step === 'form'
+                  ? 'ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026'
+                  : 'ยืนยันตัวตนด้วยรหัส OTP (Email Verification)'}
               </h3>
               <p className="text-xs sm:text-sm text-blue-300">
                 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (28 สิงหาคม 2569)
@@ -187,77 +327,19 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6">
-          {!googleStep ? (
-            /* Step 1: Input Gmail & Google Account Sign In */
-            <form onSubmit={handleGoogleAuth} className="max-w-md mx-auto py-4 space-y-5">
-              <div className="w-16 h-16 mx-auto rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 animate-pulse">
-                <UserCheck className="w-8 h-8" />
-              </div>
-
-              <div className="text-center space-y-1.5">
-                <h4 className="text-lg font-bold text-slate-900">
-                  ลงทะเบียนอัตโนมัติด้วย Google Account / Gmail
-                </h4>
-              </div>
-
-              {emailError && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl text-center">
-                  {emailError}
+          {step === 'form' ? (
+            /* STEP 1: Registration Form with Email & Password */
+            <form onSubmit={handleFormSubmit} className="space-y-4 text-left">
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
+                  {formError}
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-base py-3.5 px-6 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
-              >
-                {loading ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span>ยืนยันเข้าใช้งานด้วย Google Account</span>
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* Step 2: Complete Participant Info Form */
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between text-xs sm:text-sm text-blue-900">
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  ยืนยันบัญชี Google: <strong className="text-blue-950">{googleEmail}</strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setGoogleStep(false)}
-                  className="text-orange-600 hover:underline text-xs font-bold cursor-pointer"
-                >
-                  เปลี่ยนบัญชี
-                </button>
-              </div>
-
+              {/* Personal Name */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     ชื่อจริง <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -266,12 +348,12 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     placeholder="เช่น สมชาย"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     นามสกุล <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -280,14 +362,93 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     placeholder="เช่น ใจดี"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   />
                 </div>
               </div>
 
+              {/* Email Input */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>อีเมลประจำตัว (Email Address) <span className="text-red-500">*</span></span>
+                  <span className="text-[11px] text-slate-500 font-normal">จะใช้สำหรับเข้าสู่ระบบและรับรหัส OTP</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="เช่น example@gmail.com"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                  />
+                </div>
+              </div>
+
+              {/* Password & Confirm Password with Eye Toggle */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    สร้างรหัสผ่าน (Password) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="กำหนดรหัสผ่าน (6 ตัวขึ้นไป)"
+                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ยืนยันรหัสผ่าน (Confirm Password) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <KeyRound className="w-4 h-4" />
+                    </div>
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      minLength={6}
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      placeholder="ยืนยันรหัสผ่านอีกครั้ง"
+                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phone & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -296,18 +457,18 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="เช่น 0812345678"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     สถานภาพผู้เข้าร่วม <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as AttendeeStatus })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   >
                     <option value="นักเรียน">นักเรียน</option>
                     <option value="ครู/อาจารย์">ครู / อาจารย์</option>
@@ -317,8 +478,9 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 </div>
               </div>
 
+              {/* Organization */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   ชื่อสถาบัน / โรงเรียน / หน่วยงาน <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -327,13 +489,14 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   value={formData.organization}
                   onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
                   placeholder="เช่น โรงเรียนเลยพิทยาคม หรือ บุคคลทั่วไป"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 text-sm"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                 />
               </div>
 
+              {/* District & Province */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     ชื่ออำเภอ <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -342,18 +505,18 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.district}
                     onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                     placeholder="เช่น เมืองเลย, เชียงคาน"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     จังหวัด <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formData.province}
                     onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:border-orange-500 text-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   >
                     {THAI_PROVINCES.map((p) => (
                       <option key={p} value={p}>
@@ -364,10 +527,11 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 </div>
               </div>
 
+              {/* Attendee Count & Transport */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    จำนวนผู้เข้าร่วม (รวมผู้ลงทะเบียน) <span className="text-red-500">*</span>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    จำนวนผู้เข้าร่วม (คน) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
@@ -375,19 +539,23 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     max={200}
                     required
                     value={formData.attendeeCount}
-                    onChange={(e) => setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:border-orange-500 text-sm"
+                    onChange={(e) =>
+                      setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
                     วิธีการเดินทาง <span className="text-red-500">*</span>
                   </label>
                   <select
                     value={formData.transportMethod}
-                    onChange={(e) => setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:border-orange-500 text-sm"
+                    onChange={(e) =>
+                      setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })
+                    }
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
                   >
                     <option value="รถส่วนตัว">รถส่วนตัว</option>
                     <option value="รถบัสโรงเรียน">รถบัสโรงเรียน</option>
@@ -398,7 +566,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 </div>
               </div>
 
-              {/* Submit button allowing Enter key press */}
+              {/* Action Buttons */}
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
@@ -410,15 +578,131 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-8 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-2"
+                  className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-2"
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>กำลังบันทึกข้อมูล...</span>
+                      <span>กำลังส่งรหัสยืนยัน OTP...</span>
                     </>
                   ) : (
-                    <span>ยืนยันการลงทะเบียน (Press Enter)</span>
+                    <>
+                      <span>ถัดไป: ส่งรหัสยืนยันไปยัง Email</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* STEP 2: Email OTP Verification Step */
+            <form onSubmit={handleVerifyOtpSubmit} className="space-y-6 text-left max-w-md mx-auto py-2">
+              
+              {/* Interactive Email Inbox Toast Notification showing sent OTP */}
+              <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-4 shadow-xl border border-blue-500/30 space-y-3">
+                <div className="flex items-center justify-between text-xs text-blue-300 border-b border-slate-800 pb-2">
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <Mail className="w-4 h-4 text-blue-400" />
+                    กล่องข้อความอีเมลจำลอง (Email Inbox Preview)
+                  </span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">
+                    ส่งแล้ว
+                  </span>
+                </div>
+
+                <div className="text-xs text-slate-200">
+                  เรียนคุณ <strong className="text-white">{formData.firstName} {formData.lastName}</strong>,<br />
+                  รหัสยืนยันการลงทะเบียน PCSHS Loei Open House 2026 ของท่านคือ:
+                </div>
+
+                <div className="flex items-center justify-between bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                  <div className="font-mono text-2xl font-extrabold text-amber-400 tracking-widest">
+                    {sentOtp || '------'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyOtpToClipboard}
+                    className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
+                  >
+                    {copiedOtp ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedOtp ? 'คัดลอกแล้ว' : 'คัดลอก OTP'}</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-slate-400">
+                  ส่งไปยัง: <span className="text-blue-200 font-mono font-semibold">{formData.email}</span>
+                </div>
+              </div>
+
+              {/* OTP Error Message */}
+              {otpError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
+                  {otpError}
+                </div>
+              )}
+
+              {/* Input for OTP */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 text-center">
+                  กรอกรหัสยืนยัน OTP 6 หลักที่ได้รับทางอีเมล
+                </label>
+
+                <div className="flex justify-center">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    placeholder="123456"
+                    className="w-48 text-center bg-slate-50 border-2 border-orange-500 focus:border-orange-600 rounded-2xl px-4 py-3 text-2xl font-mono font-extrabold tracking-widest text-slate-900 focus:outline-none shadow-md"
+                  />
+                </div>
+              </div>
+
+              {/* Cooldown & Resend button */}
+              <div className="text-center space-y-1">
+                <p className="text-xs text-slate-500">
+                  ไม่ได้รับรหัสยืนยัน?{' '}
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={resendCooldown > 0 || loading}
+                    className="text-orange-600 hover:underline font-bold disabled:text-slate-400 disabled:no-underline cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                    <span>
+                      {resendCooldown > 0 ? `ขอรหัสใหม่ใน (${resendCooldown}s)` : 'ส่งรหัสยืนยันอีกครั้ง'}
+                    </span>
+                  </button>
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setStep('form')}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-xs sm:text-sm transition-colors cursor-pointer"
+                >
+                  &larr; แก้ไขข้อมูล
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>กำลังยืนยันและบันทึกลง Firebase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-5 h-5" />
+                      <span>ยืนยัน OTP และสร้างบัญชี</span>
+                    </>
                   )}
                 </button>
               </div>
