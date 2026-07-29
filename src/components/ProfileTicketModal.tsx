@@ -21,6 +21,39 @@ export const ProfileTicketModal: React.FC<ProfileTicketModalProps> = ({
 
   if (!isOpen || !attendee) return null;
 
+  const handleDownloadQR = () => {
+    const svgElement = document.querySelector('#printable-ticket svg') as SVGElement | null;
+    if (!svgElement) return;
+
+    try {
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      img.onload = () => {
+        canvas.width = 300;
+        canvas.height = 300;
+        if (ctx) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 25, 25, 250, 250);
+          const pngUrl = canvas.toDataURL('image/png');
+          const downloadLink = document.createElement('a');
+          downloadLink.href = pngUrl;
+          downloadLink.download = `QRCode_PCSHS_${attendee.participantCode}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        }
+      };
+
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    } catch (err) {
+      console.error('Failed to export QR PNG', err);
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!ticketRef.current) return;
     setDownloadingPdf(true);
@@ -189,8 +222,16 @@ export const ProfileTicketModal: React.FC<ProfileTicketModalProps> = ({
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-2">
             <button
+              onClick={handleDownloadQR}
+              className="w-full sm:w-auto px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-medium text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-300"
+            >
+              <QrCode className="w-4 h-4 text-emerald-600" />
+              <span>โหลดเฉพาะรูป QR Code (PNG)</span>
+            </button>
+
+            <button
               onClick={() => window.print()}
-              className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-700"
+              className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-700"
             >
               <Printer className="w-4 h-4 text-blue-400" />
               <span>พิมพ์บัตร (Print)</span>

@@ -28,14 +28,33 @@ import { LoginModal } from './components/LoginModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { EmailTriggerModal } from './components/EmailTriggerModal';
 
+import {
+  subscribeAttendees,
+  saveAttendeeToFirestore,
+  saveAllAttendeesToFirestore,
+} from './lib/firebase';
+
 import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield } from 'lucide-react';
 
 export default function App() {
-  // Application Global State with LocalStorage Persistence
+  // Application Global State with Firebase Firestore & LocalStorage Backup
   const [attendees, setAttendees] = useState<Attendee[]>(() => {
     const saved = localStorage.getItem('pcshs_attendees');
     return saved ? JSON.parse(saved) : INITIAL_ATTENDEES;
   });
+
+  // Subscribe to real-time Firebase Firestore database
+  useEffect(() => {
+    const unsubscribe = subscribeAttendees((firestoreData) => {
+      if (firestoreData && firestoreData.length > 0) {
+        setAttendees(firestoreData);
+      } else {
+        // Seed initial data to Firebase if empty
+        saveAllAttendeesToFirestore(INITIAL_ATTENDEES);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [admins, setAdmins] = useState<AdminUser[]>(() => {
     const saved = localStorage.getItem('pcshs_admins');
@@ -124,6 +143,9 @@ export default function App() {
     setIsRegisterOpen(false);
     setIsProfileOpen(true);
     addAuditLog('ลงทะเบียนใหม่', `ผู้เข้าร่วมใหม่ ${newAttendee.participantCode} (${newAttendee.firstName} ${newAttendee.lastName})`);
+    
+    // Persist to Firebase Firestore
+    saveAttendeeToFirestore(newAttendee);
   };
 
   const handleAdminLoginSuccess = (admin: AdminUser) => {

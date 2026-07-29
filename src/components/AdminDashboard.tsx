@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
+import { saveAttendeeToFirestore } from '../lib/firebase';
 import {
   Activity,
   CheckCircle2,
@@ -131,13 +132,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const updated = [...attendees];
       const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      updated[foundIdx] = {
+      const updatedItem = {
         ...found,
         checkedIn: true,
         checkedInAt: nowStr,
       };
+      updated[foundIdx] = updatedItem;
 
       setAttendees(updated);
+      saveAttendeeToFirestore(updatedItem);
       setScannerMessage({
         type: 'success',
         text: `🎉 บันทึกการเช็คอินสำเร็จ! ${found.participantCode} - คุณ${found.firstName} ${found.lastName} (${found.organization})`,
@@ -165,7 +168,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           'เปลี่ยนสถานะการเช็คอิน',
           `ปรับเปลี่ยนสถานะ ${a.participantCode} (${a.firstName}) เป็น ${nextState ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน'}`
         );
-        return { ...a, checkedIn: nextState, checkedInAt: nowStr };
+        const updatedAttendee = { ...a, checkedIn: nextState, checkedInAt: nowStr };
+        saveAttendeeToFirestore(updatedAttendee);
+        return updatedAttendee;
       }
       return a;
     });

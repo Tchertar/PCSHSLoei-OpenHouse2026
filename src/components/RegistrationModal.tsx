@@ -22,6 +22,8 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 }) => {
   const [googleStep, setGoogleStep] = useState(false);
   const [googleEmail, setGoogleEmail] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -38,15 +40,31 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Auth Simulate
-  const handleGoogleAuth = () => {
+  // Handle Google Auth with Real Gmail Input
+  const handleGoogleAuth = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    let rawEmail = emailInput.trim();
+    if (!rawEmail) {
+      setEmailError('กรุณากรอกบัญชี Gmail / Google Account ของคุณ');
+      return;
+    }
+
+    if (!rawEmail.includes('@')) {
+      rawEmail = `${rawEmail}@gmail.com`;
+    }
+
+    if (!rawEmail.includes('.')) {
+      setEmailError('กรุณากรอกรูปแบบอีเมลให้ถูกต้อง เช่น example@gmail.com');
+      return;
+    }
+
+    setEmailError('');
     setLoading(true);
     setTimeout(() => {
-      const mockEmail = `user.${Math.floor(1000 + Math.random() * 9000)}@gmail.com`;
-      setGoogleEmail(mockEmail);
+      setGoogleEmail(rawEmail);
       setGoogleStep(true);
       setLoading(false);
-    }, 800);
+    }, 600);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -123,25 +141,79 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
         {/* Modal Body */}
         <div className="p-6">
           {!googleStep ? (
-            /* Step 1: Click Google Sign In button */
-            <div className="text-center py-8 space-y-6">
-              <div className="w-20 h-20 mx-auto rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 animate-pulse">
-                <UserCheck className="w-10 h-10" />
+            /* Step 1: Input Gmail & Google Account Sign In */
+            <form onSubmit={handleGoogleAuth} className="max-w-md mx-auto py-4 space-y-5">
+              <div className="w-16 h-16 mx-auto rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 animate-pulse">
+                <UserCheck className="w-8 h-8" />
               </div>
 
-              <div className="max-w-md mx-auto space-y-2">
+              <div className="text-center space-y-1.5">
                 <h4 className="text-lg font-bold text-slate-900">
-                  เริ่มต้นลงทะเบียนเข้าร่วมงานง่ายๆ
+                  ลงทะเบียนอัตโนมัติด้วย Google Account / Gmail
                 </h4>
-                <p className="text-sm text-slate-600">
-                  โปรดยืนยันตัวตนด้วย Google Account เพื่อบันทึกประวัติการเข้าร่วมงานและรับ QR Code บัตรเข้าร่วมงาน
+                <p className="text-xs sm:text-sm text-slate-600">
+                  ระบุบัญชี Gmail ของคุณเพื่อสร้างบัตรเข้าร่วมงานและ QR Code เช็คอินอัตโนมัติ
                 </p>
               </div>
 
+              {/* Quick Select Gmail if available */}
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2 text-left">
+                <span className="text-xs font-bold text-blue-900 block">บัญชี Google ที่พร้อมใช้งาน:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const detectedEmail = 'suthut.b@gmail.com';
+                    setEmailInput(detectedEmail);
+                    setEmailError('');
+                    setLoading(true);
+                    setTimeout(() => {
+                      setGoogleEmail(detectedEmail);
+                      setGoogleStep(true);
+                      setLoading(false);
+                    }, 500);
+                  }}
+                  className="w-full flex items-center justify-between bg-white hover:bg-blue-100/60 p-2.5 rounded-lg border border-blue-200 transition-all text-xs text-blue-950 font-semibold cursor-pointer shadow-sm hover:scale-[1.01]"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
+                      S
+                    </div>
+                    <span className="font-mono">suthut.b@gmail.com</span>
+                  </div>
+                  <span className="text-blue-600 font-bold text-[11px] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    เลือกบัญชีนี้ &rarr;
+                  </span>
+                </button>
+              </div>
+
+              {emailError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl text-center">
+                  {emailError}
+                </div>
+              )}
+
+              <div className="space-y-1 text-left">
+                <label className="block text-xs font-semibold text-slate-700">
+                  หรือกรอก Gmail / Google Account อื่นๆ <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={(e) => {
+                      setEmailInput(e.target.value);
+                      if (emailError) setEmailError('');
+                    }}
+                    placeholder="เช่น example@gmail.com"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-4 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                  />
+                </div>
+              </div>
+
               <button
-                onClick={handleGoogleAuth}
+                type="submit"
                 disabled={loading}
-                className="w-full max-w-md mx-auto flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-base py-3.5 px-6 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-base py-3 px-6 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -165,11 +237,11 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                         d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                       />
                     </svg>
-                    <span>ลงทะเบียนด้วย Google Account</span>
+                    <span>ยืนยันเข้าใช้งานด้วย Google Account</span>
                   </>
                 )}
               </button>
-            </div>
+            </form>
           ) : (
             /* Step 2: Complete Participant Info Form */
             <form onSubmit={handleSubmit} className="space-y-4">

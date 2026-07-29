@@ -1,0 +1,31 @@
+{
+  "entities": {
+    "attendees": {
+      "title": "Attendees",
+      "description": "Registered participants in PCSHS Loei Open House 2026",
+      "properties": {
+        "participantCode": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "googleEmail": { "type": "string" },
+        "school": { "type": "string" },
+        "province": { "type": "string" },
+        "role": { "type": "string" },
+        "registeredAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["participantCode", "fullName"]
+    },
+    "booths": {
+      "title": "Booths",
+      "description": "Open House Activity Booths",
+      "properties": {
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "location": { "type": "string" },
+        "visitorCount": { "type": "number" }
+      },
+      "required": ["title"]
+    }
+  }
+}
