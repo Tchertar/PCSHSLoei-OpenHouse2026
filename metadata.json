@@ -1,0 +1,6 @@
+{
+  "name": "PCSHS Loei Open House 2026",
+  "description": "ระบบลงทะเบียนเข้าร่วมงาน PCSHS Loei Open House 2026 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

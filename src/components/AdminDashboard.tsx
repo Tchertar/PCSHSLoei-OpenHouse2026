@@ -1,0 +1,1079 @@
+import React, { useState, useEffect } from 'react';
+import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
+import {
+  Activity,
+  CheckCircle2,
+  Download,
+  Edit,
+  History,
+  Plus,
+  QrCode,
+  Search,
+  Shield,
+  Trash2,
+  Users,
+  X,
+  UserCheck,
+  Building,
+  MapPin,
+  Camera,
+  Layers,
+  Phone,
+  Link as LinkIcon,
+  Sparkles,
+} from 'lucide-react';
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Html5QrcodeScanner } from 'html5-qrcode';
+
+interface AdminDashboardProps {
+  currentAdmin: AdminUser;
+  isOpen: boolean;
+  onClose: () => void;
+  attendees: Attendee[];
+  setAttendees: React.Dispatch<React.SetStateAction<Attendee[]>>;
+  admins: AdminUser[];
+  setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>;
+  activities: ActivityItem[];
+  setActivities: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
+  auditLogs: AuditLog[];
+  addAuditLog: (action: string, details: string) => void;
+}
+
+const COLORS = ['#3B82F6', '#F97316', '#10B981', '#8B5CF6', '#EC4899', '#F59E0B', '#6366F1'];
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  currentAdmin,
+  isOpen,
+  onClose,
+  attendees,
+  setAttendees,
+  admins,
+  setAdmins,
+  activities,
+  setActivities,
+  auditLogs,
+  addAuditLog,
+}) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'admins' | 'logs'>('overview');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Scanner state
+  const [scannedCodeInput, setScannedCodeInput] = useState('');
+  const [scannerMessage, setScannerMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  // Admin Modal state
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminFormData, setAdminFormData] = useState({ username: '', name: '', email: '' });
+
+  // Activity Modal state
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [activityFormData, setActivityFormData] = useState<Omit<ActivityItem, 'id'>>({
+    code: '',
+    department: '',
+    titleTh: '',
+    titleEn: '',
+    targetGrade: 'ม.1 - ม.6',
+    maxPerRound: 30,
+    totalRounds: 3,
+    coordinator: '',
+    phone: '',
+    registerUrl: 'https://forms.gle/pcshsloei-activity',
+    location: 'อาคารปฏิบัติการวิทยาศาสตร์',
+    timeSlot: '09:00 - 15:30 น.',
+  });
+
+  // Calculate Summary Statistics
+  const totalRegistrations = attendees.length;
+  const totalParticipantsSum = attendees.reduce((sum, a) => sum + (a.attendeeCount || 1), 0);
+  const totalCheckedIn = attendees.filter((a) => a.checkedIn).length;
+
+  // Calculate Province Pie Data
+  const provinceCounts: Record<string, number> = {};
+  attendees.forEach((a) => {
+    const prov = a.province || 'ไม่ระบุ';
+    provinceCounts[prov] = (provinceCounts[prov] || 0) + 1;
+  });
+  const provincePieData = Object.keys(provinceCounts).map((key) => ({
+    name: key,
+    value: provinceCounts[key],
+  }));
+
+  // Calculate Status Pie Data
+  const statusCounts: Record<string, number> = {};
+  attendees.forEach((a) => {
+    const st = a.status || 'ทั่วไป';
+    statusCounts[st] = (statusCounts[st] || 0) + 1;
+  });
+  const statusPieData = Object.keys(statusCounts).map((key) => ({
+    name: key,
+    value: statusCounts[key],
+  }));
+
+  // Handle QR Scan / Code Check-in
+  const handleCheckIn = (codeOrEmail: string) => {
+    const codeClean = codeOrEmail.trim().split('|')[0].toUpperCase();
+    const foundIdx = attendees.findIndex(
+      (a) =>
+        a.participantCode.toUpperCase() === codeClean ||
+        a.email.toLowerCase() === codeOrEmail.trim().toLowerCase()
+    );
+
+    if (foundIdx !== -1) {
+      const found = attendees[foundIdx];
+      if (found.checkedIn) {
+        setScannerMessage({
+          type: 'info',
+          text: `⚠️ ผู้เข้าร่วม ${found.participantCode} (${found.firstName} ${found.lastName}) เช็คอินเข้างานแล้วล่วงหน้า`,
+        });
+        return;
+      }
+
+      const updated = [...attendees];
+      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      updated[foundIdx] = {
+        ...found,
+        checkedIn: true,
+        checkedInAt: nowStr,
+      };
+
+      setAttendees(updated);
+      setScannerMessage({
+        type: 'success',
+        text: `🎉 บันทึกการเช็คอินสำเร็จ! ${found.participantCode} - คุณ${found.firstName} ${found.lastName} (${found.organization})`,
+      });
+
+      addAuditLog(
+        'สแกน QR Code เช็คอิน',
+        `ผู้เข้าร่วม ${found.participantCode} (${found.firstName} ${found.lastName}) เช็คอินสำเร็จ`
+      );
+    } else {
+      setScannerMessage({
+        type: 'error',
+        text: `❌ ไม่พบรหัสผู้เข้าร่วม "${codeOrEmail}" ในระบบ`,
+      });
+    }
+  };
+
+  // Toggle checkin directly from table
+  const handleToggleCheckIn = (attendeeId: string) => {
+    const updated = attendees.map((a) => {
+      if (a.id === attendeeId) {
+        const nextState = !a.checkedIn;
+        const nowStr = nextState ? new Date().toISOString().replace('T', ' ').substring(0, 19) : undefined;
+        addAuditLog(
+          'เปลี่ยนสถานะการเช็คอิน',
+          `ปรับเปลี่ยนสถานะ ${a.participantCode} (${a.firstName}) เป็น ${nextState ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน'}`
+        );
+        return { ...a, checkedIn: nextState, checkedInAt: nowStr };
+      }
+      return a;
+    });
+    setAttendees(updated);
+  };
+
+  // Export Attendees to CSV/Excel excluding passwords
+  const handleExportCSV = () => {
+    const headers = [
+      'Participant Code',
+      'First Name',
+      'Last Name',
+      'Email',
+      'Phone',
+      'Status',
+      'Organization',
+      'District',
+      'Province',
+      'Attendee Count',
+      'Transport Method',
+      'Register Date',
+      'Checked In Status',
+      'Checked In Time',
+    ];
+
+    const rows = attendees.map((a) => [
+      a.participantCode,
+      a.firstName,
+      a.lastName,
+      a.email,
+      a.phone,
+      a.status,
+      a.organization,
+      a.district,
+      a.province,
+      a.attendeeCount,
+      a.transportMethod,
+      a.registeredAt,
+      a.checkedIn ? 'YES' : 'NO',
+      a.checkedInAt || '-',
+    ]);
+
+    let csvContent = '\uFEFF'; // UTF-8 BOM for Thai Excel compatibility
+    csvContent += headers.join(',') + '\n';
+    rows.forEach((row) => {
+      const escapedRow = row.map((field) => `"${String(field).replace(/"/g, '""')}"`);
+      csvContent += escapedRow.join(',') + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `PCSHS_Loei_OpenHouse_Attendees_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ CSV ข้อมูลผู้เข้าร่วมงานทั้งหมด (ยกเว้นรหัสผ่าน)');
+  };
+
+  // Add Admin (Super Admin only)
+  const handleSaveAdmin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminFormData.username || !adminFormData.name || !adminFormData.email) return;
+
+    const newAdmin: AdminUser = {
+      id: `adm-${Date.now()}`,
+      username: adminFormData.username.trim(),
+      name: adminFormData.name.trim(),
+      email: adminFormData.email.trim(),
+      role: 'admin',
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    };
+
+    setAdmins([...admins, newAdmin]);
+    setShowAdminModal(false);
+    setAdminFormData({ username: '', name: '', email: '' });
+    addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่ (${newAdmin.username} - ${newAdmin.name})`);
+  };
+
+  const handleDeleteAdmin = (id: string, username: string) => {
+    if (username === 'admin') {
+      alert('ไม่สามารถลบ Super Admin หลักได้');
+      return;
+    }
+    if (confirm(`คุณต้องการลบสิทธิ์ Admin ของ ${username} หรือไม่?`)) {
+      setAdmins(admins.filter((a) => a.id !== id));
+      addAuditLog('ลบ Admin', `ถอนสิทธิ์แอดมิน (${username})`);
+    }
+  };
+
+  // Activity CRUD
+  const handleOpenActivityModal = (activity?: ActivityItem) => {
+    if (activity) {
+      setEditingActivityId(activity.id);
+      setActivityFormData({
+        code: activity.code,
+        department: activity.department,
+        titleTh: activity.titleTh,
+        titleEn: activity.titleEn,
+        targetGrade: activity.targetGrade,
+        maxPerRound: activity.maxPerRound,
+        totalRounds: activity.totalRounds,
+        coordinator: activity.coordinator,
+        phone: activity.phone,
+        registerUrl: activity.registerUrl,
+        location: activity.location || 'อาคารวิทยาศาสตร์',
+        timeSlot: activity.timeSlot || '09:00 - 15:30 น.',
+      });
+    } else {
+      setEditingActivityId(null);
+      setActivityFormData({
+        code: `SCI-${Math.floor(10 + Math.random() * 89)}`,
+        department: 'สาขาวิทยาศาสตร์',
+        titleTh: '',
+        titleEn: '',
+        targetGrade: 'ม.1 - ม.6',
+        maxPerRound: 30,
+        totalRounds: 3,
+        coordinator: '',
+        phone: '',
+        registerUrl: 'https://forms.gle/pcshsloei-activity',
+        location: 'อาคารวิทยาศาสตร์',
+        timeSlot: '09:00 - 15:30 น.',
+      });
+    }
+    setShowActivityModal(true);
+  };
+
+  const handleSaveActivity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activityFormData.code || !activityFormData.titleTh || !activityFormData.coordinator) return;
+
+    if (editingActivityId) {
+      // Edit existing
+      const updated = activities.map((act) =>
+        act.id === editingActivityId ? { ...act, ...activityFormData } : act
+      );
+      setActivities(updated);
+      addAuditLog('แก้ไขกิจกรรม', `แก้ไขข้อมูลกิจกรรม ${activityFormData.code} (${activityFormData.titleTh})`);
+    } else {
+      // Add new
+      const newAct: ActivityItem = {
+        id: `act-${Date.now()}`,
+        ...activityFormData,
+      };
+      setActivities([...activities, newAct]);
+      addAuditLog('เพิ่มกิจกรรมใหม่', `เพิ่มกิจกรรม ${newAct.code} (${newAct.titleTh})`);
+    }
+
+    setShowActivityModal(false);
+  };
+
+  const handleDeleteActivity = (id: string, code: string) => {
+    if (confirm(`คุณต้องการลบกิจกรรม ${code} หรือไม่?`)) {
+      setActivities(activities.filter((a) => a.id !== id));
+      addAuditLog('ลบกิจกรรม', `ลบกิจกรรม (${code})`);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-6xl my-4 sm:my-8 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden text-slate-900 flex flex-col max-h-[92vh]">
+        {/* Top Header */}
+        <div className="bg-slate-900 p-4 sm:p-6 border-b border-slate-800 text-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-2">
+                <span>แดชบอร์ดผู้ดูแลระบบ</span>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-300">
+                  {currentAdmin.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                </span>
+              </h3>
+              <p className="text-xs text-blue-300">
+                ยินดีต้อนรับ คุณ{currentAdmin.name} ({currentAdmin.email})
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-colors cursor-pointer"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1 sm:gap-2 px-4 pt-3 bg-slate-100 border-b border-slate-200 overflow-x-auto shrink-0">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'overview'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            สรุปรายงาน & กราฟ
+          </button>
+
+          <button
+            onClick={() => setActiveTab('scanner')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'scanner'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            <span>สแกน QR Code เช็คอิน</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('attendees')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'attendees'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>รายชื่อผู้ลงทะเบียน ({totalRegistrations})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('activities')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'activities'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Activity className="w-4 h-4" />
+            <span>จัดการกิจกรรม ({activities.length})</span>
+          </button>
+
+          {currentAdmin.role === 'super_admin' && (
+            <button
+              onClick={() => setActiveTab('admins')}
+              className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'admins'
+                  ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              <span>จัดการสิทธิ์ Admin ({admins.length})</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setActiveTab('logs')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'logs'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>Audit Logs</span>
+          </button>
+        </div>
+
+        {/* Dashboard Content Container */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+          {/* TAB 1: OVERVIEW & PIE CHARTS */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {/* Summary Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <span className="text-xs text-blue-600 font-bold block mb-1">จำนวนการลงทะเบียนทั้งหมด</span>
+                  <span className="text-3xl font-extrabold text-slate-900">{totalRegistrations} รายการ</span>
+                  <span className="text-xs text-slate-500 block mt-1">รวมยอดผู้เข้าร่วมงาน {totalParticipantsSum} คน</span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <span className="text-xs text-orange-600 font-bold block mb-1">สแกนเช็คอินเข้างานแล้ว</span>
+                  <span className="text-3xl font-extrabold text-orange-600">{totalCheckedIn} รายการ</span>
+                  <span className="text-xs text-slate-500 block mt-1">
+                    คิดเป็น {totalRegistrations ? Math.round((totalCheckedIn / totalRegistrations) * 100) : 0}% ของทั้งหมด
+                  </span>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <span className="text-xs text-emerald-600 font-bold block mb-1">กิจกรรมและนิทรรศการ</span>
+                  <span className="text-3xl font-extrabold text-emerald-600">{activities.length} กิจกรรม</span>
+                  <span className="text-xs text-slate-500 block mt-1">เปิดรับลงทะเบียนการแข่งขันทางวิชาการ</span>
+                </div>
+              </div>
+
+              {/* Pie Charts Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Chart 1: Province Pie Chart */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <h4 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-orange-500" />
+                    <span>เปรียบเทียบสัดส่วนผู้เข้าร่วมตามจังหวัด</span>
+                  </h4>
+                  <div className="w-full h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={provincePieData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {provincePieData.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Chart 2: Status / Participant Type Pie Chart */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                  <h4 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-500" />
+                    <span>เปรียบเทียบประเภทกลุ่มผู้เข้าร่วมงาน</span>
+                  </h4>
+                  <div className="w-full h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusPieData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={80}
+                          fill="#82ca9d"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {statusPieData.map((_, index) => (
+                            <Cell key={`cell-status-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: QR CODE SCANNER */}
+          {activeTab === 'scanner' && (
+            <div className="max-w-2xl mx-auto space-y-6 py-4">
+              <div className="text-center space-y-2">
+                <h4 className="text-xl font-bold text-slate-900 flex items-center justify-center gap-2">
+                  <Camera className="w-6 h-6 text-orange-500" />
+                  <span>สแกน QR Code ประจำตัวผู้เข้าร่วม</span>
+                </h4>
+                <p className="text-xs text-slate-600">
+                  สแกนรหัสผ่านกล้อง หรือ พิมพ์รหัสผู้เข้าร่วม (เช่น <code className="text-orange-600 font-bold">PCSHS2026-1001</code>) เพื่อบันทึกข้อมูลการเข้างานทันที
+                </p>
+              </div>
+
+              {/* Status Alert */}
+              {scannerMessage && (
+                <div
+                  className={`p-4 rounded-xl border text-sm font-bold shadow-sm ${
+                    scannerMessage.type === 'success'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : scannerMessage.type === 'error'
+                      ? 'bg-red-50 border-red-200 text-red-800'
+                      : 'bg-blue-50 border-blue-200 text-blue-800'
+                  }`}
+                >
+                  {scannerMessage.text}
+                </div>
+              )}
+
+              {/* Code Input Form */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                <label className="block text-xs font-semibold text-slate-700">
+                  พิมพ์รหัสผู้เข้าร่วม (Participant Code) หรือ อีเมล
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={scannedCodeInput}
+                    onChange={(e) => setScannedCodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleCheckIn(scannedCodeInput);
+                        setScannedCodeInput('');
+                      }
+                    }}
+                    placeholder="PCSHS2026-1001"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 font-mono text-sm focus:outline-none focus:border-orange-500"
+                  />
+                  <button
+                    onClick={() => {
+                      handleCheckIn(scannedCodeInput);
+                      setScannedCodeInput('');
+                    }}
+                    className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105"
+                  >
+                    บันทึกเช็คอิน
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick test check-in buttons */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                <span className="text-xs text-slate-500 block font-semibold">
+                  ทดสอบสแกนด่วนรายชื่อในระบบ:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {attendees.slice(0, 5).map((att) => (
+                    <button
+                      key={att.id}
+                      onClick={() => handleCheckIn(att.participantCode)}
+                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-xs font-mono rounded-lg border border-slate-200 text-slate-700 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>{att.participantCode}</span>
+                      <span className="text-[10px] text-slate-400">({att.firstName})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: ATTENDEES TABLE */}
+          {activeTab === 'attendees' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="relative w-full sm:w-80">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="ค้นหาชื่อ, รหัส, เบอร์โทร, สถาบัน..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export ข้อมูลผู้เข้าร่วม (CSV/Excel)</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-xs sm:text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">รหัสประจำตัว</th>
+                      <th className="px-4 py-3">ชื่อ - นามสกุล</th>
+                      <th className="px-4 py-3">สถาบัน / หน่วยงาน</th>
+                      <th className="px-4 py-3">จังหวัด</th>
+                      <th className="px-4 py-3">สถานภาพ</th>
+                      <th className="px-4 py-3 text-center">จำนวนผู้ร่วม</th>
+                      <th className="px-4 py-3 text-center">สถานะเช็คอิน</th>
+                      <th className="px-4 py-3 text-right">การจัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {attendees
+                      .filter(
+                        (a) =>
+                          a.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          a.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          a.participantCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          a.organization.toLowerCase().includes(searchTerm.toLowerCase())
+                      )
+                      .map((att) => (
+                        <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-orange-600">
+                            {att.participantCode}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-slate-900">
+                            {att.firstName} {att.lastName}
+                            <span className="block text-[10px] text-slate-500 font-normal">
+                              {att.email} | {att.phone}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">{att.organization}</td>
+                          <td className="px-4 py-3 text-slate-700">{att.province}</td>
+                          <td className="px-4 py-3 text-slate-700">{att.status}</td>
+                          <td className="px-4 py-3 text-center font-bold text-amber-700">
+                            {att.attendeeCount} คน
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {att.checkedIn ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                เช็คอินแล้ว
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 font-medium text-xs bg-slate-100 px-2.5 py-1 rounded-full">
+                                ยังไม่เช็คอิน
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => handleToggleCheckIn(att.id)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                                att.checkedIn
+                                  ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow'
+                              }`}
+                            >
+                              {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้างาน'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: ACTIVITIES MANAGEMENT */}
+          {activeTab === 'activities' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-base">จัดการกิจกรรมและนิทรรศการภายในงาน</h4>
+                  <p className="text-xs text-slate-500">
+                    เพิ่ม ลบ หรือแก้ไขกิจกรรมได้ตลอดเวลา ข้อมูลจะอัปเดตไปแสดงผลที่หน้าแรกทันที
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleOpenActivityModal()}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>เพิ่มกิจกรรมใหม่</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activities.map((act) => (
+                  <div
+                    key={act.id}
+                    className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-mono text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded">
+                          {act.code}
+                        </span>
+                        <span className="text-xs text-blue-600 font-bold">{act.department}</span>
+                      </div>
+
+                      <h5 className="font-bold text-slate-900 text-base mb-1">{act.titleTh}</h5>
+                      <p className="text-xs text-slate-500 italic font-mono mb-3">{act.titleEn}</p>
+
+                      <div className="text-xs text-slate-600 space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 mb-4">
+                        <p>• ระดับชั้น: <strong>{act.targetGrade}</strong></p>
+                        <p>• รองรับ: <strong>{act.maxPerRound} คน/รอบ</strong> ({act.totalRounds} รอบ)</p>
+                        <p>• ผู้ประสานงาน: <strong>{act.coordinator}</strong> ({act.phone})</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                      <button
+                        onClick={() => handleOpenActivityModal(act)}
+                        className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1 border border-blue-200"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>แก้ไข</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteActivity(act.id, act.code)}
+                        className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1 border border-red-200"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>ลบ</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: ADMINS MANAGEMENT (Super Admin Only) */}
+          {activeTab === 'admins' && currentAdmin.role === 'super_admin' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-base">จัดการรายชื่อผู้ได้รับสิทธิ์ Admin</h4>
+                  <p className="text-xs text-slate-500">
+                    เพิ่มหรือถอนสิทธิ์อีเมลสำหรับสแกนเข้างานและจัดการข้อมูล
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAdminModal(true)}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>เพิ่ม Admin ใหม่</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-xs sm:text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">Username</th>
+                      <th className="px-4 py-3">ชื่อ - นามสกุล</th>
+                      <th className="px-4 py-3">อีเมล</th>
+                      <th className="px-4 py-3">บทบาท</th>
+                      <th className="px-4 py-3">วันที่เพิ่ม</th>
+                      <th className="px-4 py-3 text-right">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {admins.map((adm) => (
+                      <tr key={adm.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-mono font-bold text-orange-600">
+                          {adm.username}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-slate-900">{adm.name}</td>
+                        <td className="px-4 py-3 text-slate-600">{adm.email}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                              adm.role === 'super_admin'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-blue-50 text-blue-800 border border-blue-200'
+                            }`}
+                          >
+                            {adm.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-500 text-xs">{adm.createdAt}</td>
+                        <td className="px-4 py-3 text-right">
+                          {adm.username !== 'admin' && (
+                            <button
+                              onClick={() => handleDeleteAdmin(adm.id, adm.username)}
+                              className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: AUDIT LOGS */}
+          {activeTab === 'logs' && (
+            <div className="space-y-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                <h4 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <History className="w-5 h-5 text-orange-500" />
+                  <span>ประวัติการแก้ไขข้อมูล (Audit Logs)</span>
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">
+                  บันทึกประวัติการเปลี่ยนแปลงข้อมูล การสแกนเข้างาน และการปรับเปลี่ยนสิทธิ์ระบบ
+                </p>
+              </div>
+
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-xs sm:text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">เวลา</th>
+                      <th className="px-4 py-3">ผู้ดำเนินการ</th>
+                      <th className="px-4 py-3">การกระทำ (Action)</th>
+                      <th className="px-4 py-3">รายละเอียด (Details)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">
+                          {log.timestamp}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-blue-600">{log.actor}</td>
+                        <td className="px-4 py-3 font-bold text-orange-600">{log.action}</td>
+                        <td className="px-4 py-3 text-slate-700">{log.details}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Admin Add Modal */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
+          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl text-slate-900">
+            <button
+              onClick={() => setShowAdminModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h4 className="text-lg font-bold text-slate-900 mb-4">เพิ่มผู้ดูแลระบบ (Admin) ใหม่</h4>
+            <form onSubmit={handleSaveAdmin} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Username</label>
+                <input
+                  type="text"
+                  required
+                  value={adminFormData.username}
+                  onChange={(e) => setAdminFormData({ ...adminFormData, username: e.target.value })}
+                  placeholder="เช่น admin04"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">ชื่อ - นามสกุล</label>
+                <input
+                  type="text"
+                  required
+                  value={adminFormData.name}
+                  onChange={(e) => setAdminFormData({ ...adminFormData, name: e.target.value })}
+                  placeholder="เช่น ครูสมชาย ใจดี"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">อีเมล</label>
+                <input
+                  type="email"
+                  required
+                  value={adminFormData.email}
+                  onChange={(e) => setAdminFormData({ ...adminFormData, email: e.target.value })}
+                  placeholder="admin04@pcshsloei.ac.th"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm rounded-xl shadow cursor-pointer"
+              >
+                บันทึกแอดมินใหม่
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Add/Edit Modal */}
+      {showActivityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-xl my-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl text-slate-900">
+            <button
+              onClick={() => setShowActivityModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h4 className="text-lg font-bold text-slate-900 mb-4">
+              {editingActivityId ? 'แก้ไขข้อมูลกิจกรรม' : 'เพิ่มกิจกรรมภายในงานใหม่'}
+            </h4>
+            <form onSubmit={handleSaveActivity} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">รหัสกิจกรรม</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityFormData.code}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, code: e.target.value })}
+                    placeholder="SCI-PHYS-01"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">ฝ่ายงาน/สาขา</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityFormData.department}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, department: e.target.value })}
+                    placeholder="สาขาฟิสิกส์"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">ชื่อกิจกรรม (ภาษาไทย)</label>
+                <input
+                  type="text"
+                  required
+                  value={activityFormData.titleTh}
+                  onChange={(e) => setActivityFormData({ ...activityFormData, titleTh: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">ชื่อกิจกรรม (ภาษาอังกฤษ)</label>
+                <input
+                  type="text"
+                  required
+                  value={activityFormData.titleEn}
+                  onChange={(e) => setActivityFormData({ ...activityFormData, titleEn: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">ระดับชั้นที่เข้าร่วม</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityFormData.targetGrade}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, targetGrade: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">รองรับต่อรอบ (คน)</label>
+                  <input
+                    type="number"
+                    required
+                    value={activityFormData.maxPerRound}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, maxPerRound: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">จำนวนรอบ</label>
+                  <input
+                    type="number"
+                    required
+                    value={activityFormData.totalRounds}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, totalRounds: Number(e.target.value) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">ครูผู้ประสานงาน</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityFormData.coordinator}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, coordinator: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">เบอร์โทรศัพท์</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityFormData.phone}
+                    onChange={(e) => setActivityFormData({ ...activityFormData, phone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">ลิงก์แบบฟอร์มลงทะเบียนการแข่งขัน</label>
+                <input
+                  type="url"
+                  required
+                  value={activityFormData.registerUrl}
+                  onChange={(e) => setActivityFormData({ ...activityFormData, registerUrl: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-sm rounded-xl shadow cursor-pointer mt-2"
+              >
+                บันทึกกิจกรรม
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
