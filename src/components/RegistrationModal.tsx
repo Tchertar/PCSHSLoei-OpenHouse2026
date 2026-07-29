@@ -598,40 +598,19 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
             /* STEP 2: Email OTP Verification Step */
             <form onSubmit={handleVerifyOtpSubmit} className="space-y-6 text-left max-w-md mx-auto py-2">
               
-              {/* Interactive Email Inbox Toast Notification showing sent OTP */}
-              <div className="bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-4 shadow-xl border border-blue-500/30 space-y-3">
-                <div className="flex items-center justify-between text-xs text-blue-300 border-b border-slate-800 pb-2">
-                  <span className="flex items-center gap-1.5 font-bold">
-                    <Mail className="w-4 h-4 text-blue-400" />
-                    กล่องข้อความอีเมลจำลอง (Email Inbox Preview)
-                  </span>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono">
-                    ส่งแล้ว
-                  </span>
+              {/* Real Email Sent Notification Banner */}
+              <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-blue-500/30 space-y-2 text-center">
+                <div className="w-12 h-12 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-blue-400/30">
+                  <Mail className="w-6 h-6 text-blue-400 animate-bounce" />
                 </div>
-
-                <div className="text-xs text-slate-200">
-                  เรียนคุณ <strong className="text-white">{formData.firstName} {formData.lastName}</strong>,<br />
-                  รหัสยืนยันการลงทะเบียน PCSHS Loei Open House 2026 ของท่านคือ:
-                </div>
-
-                <div className="flex items-center justify-between bg-slate-800/80 p-3 rounded-xl border border-slate-700">
-                  <div className="font-mono text-2xl font-extrabold text-amber-400 tracking-widest">
-                    {sentOtp || '------'}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={copyOtpToClipboard}
-                    className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer"
-                  >
-                    {copiedOtp ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedOtp ? 'คัดลอกแล้ว' : 'คัดลอก OTP'}</span>
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-slate-400">
-                  ส่งไปยัง: <span className="text-blue-200 font-mono font-semibold">{formData.email}</span>
-                </div>
+                <h3 className="font-bold text-base text-white">
+                  ส่งรหัสยืนยัน OTP ไปยังอีเมลของคุณแล้ว
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  ระบบได้ส่งรหัสยืนยัน OTP 6 หลัก ไปยังอีเมล{' '}
+                  <strong className="text-amber-300 font-mono text-sm underline">{formData.email}</strong> แล้ว<br />
+                  กรุณาเปิดเช็กใน <span className="text-white font-semibold">กล่องข้อความ (Inbox)</span> หรือ <span className="text-white font-semibold">จดหมายขยะ (Junk / Spam)</span>
+                </p>
               </div>
 
               {/* OTP Error Message */}

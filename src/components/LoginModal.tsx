@@ -188,7 +188,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-transform hover:scale-[1.01]"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-transform hover:scale-[1.01]"
             >
               เข้าสู่ระบบ Admin
             </button>
@@ -241,7 +241,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-transform hover:scale-[1.01]"
+              className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 text-white font-bold text-sm rounded-xl shadow-md cursor-pointer transition-transform hover:scale-[1.01]"
             >
               เข้าสู่ระบบและเปิดดูบัตรผู้เข้าร่วม
             </button>

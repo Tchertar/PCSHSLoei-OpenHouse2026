@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
-import { saveAttendeeToFirestore } from '../lib/firebase';
+import { ActivityItem, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
+import {
+  saveAttendeeToFirestore,
+  deleteAttendeeFromFirestore,
+  saveAdminToFirestore,
+  deleteAdminFromFirestore,
+  saveActivityToFirestore,
+  deleteActivityFromFirestore,
+  saveMapBuildingToFirestore,
+  deleteMapBuildingFromFirestore,
+  saveScheduleToFirestore,
+  deleteScheduleFromFirestore,
+} from '../lib/firebase';
 import {
   Activity,
   CheckCircle2,
   Download,
   Edit,
+  Eye,
+  EyeOff,
   History,
   Plus,
   QrCode,
@@ -23,6 +36,8 @@ import {
   Phone,
   Link as LinkIcon,
   Sparkles,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -37,6 +52,8 @@ interface AdminDashboardProps {
   setAdmins: React.Dispatch<React.SetStateAction<AdminUser[]>>;
   activities: ActivityItem[];
   setActivities: React.Dispatch<React.SetStateAction<ActivityItem[]>>;
+  schedules: ScheduleItem[];
+  setSchedules: React.Dispatch<React.SetStateAction<ScheduleItem[]>>;
   auditLogs: AuditLog[];
   addAuditLog: (action: string, details: string) => void;
 }
@@ -53,11 +70,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   setAdmins,
   activities,
   setActivities,
+  schedules,
+  setSchedules,
   auditLogs,
   addAuditLog,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'admins' | 'logs' | 'mapEditor'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'scheduleEditor' | 'admins' | 'logs' | 'mapEditor'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Schedule Editor State
+  const [newSchedule, setNewSchedule] = useState<ScheduleItem>({
+    time: '08:30 - 09:30 น.',
+    title: '',
+    location: 'หอประชุมใหญ่ จุฬาภรณราชวิทยาลัย เลย',
+    description: '',
+    category: 'กิจกรรม',
+  });
+  const [editingScheduleIndex, setEditingScheduleIndex] = useState<number | null>(null);
 
   // Map Layout Editor State
   const [mapBuildings, setMapBuildings] = useState([
@@ -127,6 +156,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     location: 'อาคารปฏิบัติการวิทยาศาสตร์',
     timeSlot: '09:00 - 15:30 น.',
   });
+
+  // Delete Attendee (Super Admin Password Required) state
+  const [deletingAttendee, setDeletingAttendee] = useState<Attendee | null>(null);
+  const [superAdminPasswordInput, setSuperAdminPasswordInput] = useState('');
+  const [superAdminPasswordError, setSuperAdminPasswordError] = useState('');
+  const [showSuperAdminPassword, setShowSuperAdminPassword] = useState(false);
 
   // Calculate Summary Statistics
   const totalRegistrations = attendees.length;
@@ -276,6 +311,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ CSV ข้อมูลผู้เข้าร่วมงานทั้งหมด (ยกเว้นรหัสผ่าน)');
   };
 
+  // Delete Attendee with Super Admin password confirmation
+  const handleOpenDeleteAttendeeModal = (att: Attendee) => {
+    setDeletingAttendee(att);
+    setSuperAdminPasswordInput('');
+    setSuperAdminPasswordError('');
+    setShowSuperAdminPassword(false);
+  };
+
+  const handleConfirmDeleteAttendee = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deletingAttendee) return;
+
+    const pwd = superAdminPasswordInput.trim();
+    // Validate password against super admin credentials ('admin123', 'superadmin', or current super admin password)
+    const isSuperAdminPassword =
+      pwd === 'admin123' ||
+      pwd === 'superadmin' ||
+      (currentAdmin && currentAdmin.role === 'super_admin' && currentAdmin.password && pwd === currentAdmin.password);
+
+    if (!isSuperAdminPassword) {
+      setSuperAdminPasswordError('รหัสผ่าน Super Admin ไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง');
+      return;
+    }
+
+    // Delete attendee locally
+    const updated = attendees.filter((a) => a.id !== deletingAttendee.id);
+    setAttendees(updated);
+
+    // Delete attendee from Firebase Firestore
+    deleteAttendeeFromFirestore(deletingAttendee.id);
+
+    // Add audit log
+    addAuditLog(
+      'ลบผู้ลงทะเบียน (Super Admin)',
+      `ลบข้อมูลผู้ลงทะเบียน ${deletingAttendee.participantCode} (${deletingAttendee.firstName} ${deletingAttendee.lastName}) ออกจากระบบและฐานข้อมูล Firebase`
+    );
+
+    alert(`✅ ลบข้อมูลผู้ลงทะเบียน ${deletingAttendee.firstName} ${deletingAttendee.lastName} (${deletingAttendee.participantCode}) เรียบร้อยแล้ว`);
+
+    // Reset state
+    setDeletingAttendee(null);
+    setSuperAdminPasswordInput('');
+    setSuperAdminPasswordError('');
+  };
+
   // Add Admin (Super Admin only)
   const handleSaveAdmin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,6 +371,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     };
 
     setAdmins([...admins, newAdmin]);
+    saveAdminToFirestore(newAdmin);
     setShowAdminModal(false);
     setAdminFormData({ username: '', name: '', email: '' });
     addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่ (${newAdmin.username} - ${newAdmin.name})`);
@@ -303,6 +384,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     if (confirm(`คุณต้องการลบสิทธิ์ Admin ของ ${username} หรือไม่?`)) {
       setAdmins(admins.filter((a) => a.id !== id));
+      deleteAdminFromFirestore(id);
       addAuditLog('ลบ Admin', `ถอนสิทธิ์แอดมิน (${username})`);
     }
   };
@@ -351,10 +433,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (editingActivityId) {
       // Edit existing
-      const updated = activities.map((act) =>
-        act.id === editingActivityId ? { ...act, ...activityFormData } : act
-      );
+      let updatedAct: ActivityItem | null = null;
+      const updated = activities.map((act) => {
+        if (act.id === editingActivityId) {
+          updatedAct = { ...act, ...activityFormData };
+          return updatedAct;
+        }
+        return act;
+      });
       setActivities(updated);
+      if (updatedAct) saveActivityToFirestore(updatedAct);
       addAuditLog('แก้ไขกิจกรรม', `แก้ไขข้อมูลกิจกรรม ${activityFormData.code} (${activityFormData.titleTh})`);
     } else {
       // Add new
@@ -363,6 +451,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ...activityFormData,
       };
       setActivities([...activities, newAct]);
+      saveActivityToFirestore(newAct);
       addAuditLog('เพิ่มกิจกรรมใหม่', `เพิ่มกิจกรรม ${newAct.code} (${newAct.titleTh})`);
     }
 
@@ -372,6 +461,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteActivity = (id: string, code: string) => {
     if (confirm(`คุณต้องการลบกิจกรรม ${code} หรือไม่?`)) {
       setActivities(activities.filter((a) => a.id !== id));
+      deleteActivityFromFirestore(id);
       addAuditLog('ลบกิจกรรม', `ลบกิจกรรม (${code})`);
     }
   };
@@ -455,6 +545,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Activity className="w-4 h-4" />
             <span>จัดการกิจกรรม ({activities.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('scheduleEditor')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'scheduleEditor'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Calendar className="w-4 h-4 text-amber-500" />
+            <span>แก้ไขกำหนดการ ({schedules.length})</span>
           </button>
 
           {currentAdmin.role === 'super_admin' && (
@@ -648,24 +750,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Quick test check-in buttons */}
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-2">
-                <span className="text-xs text-slate-500 block font-semibold">
-                  ทดสอบสแกนด่วนรายชื่อในระบบ:
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {attendees.slice(0, 5).map((att) => (
-                    <button
-                      key={att.id}
-                      onClick={() => handleCheckIn(att.participantCode)}
-                      className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-xs font-mono rounded-lg border border-slate-200 text-slate-700 cursor-pointer flex items-center gap-1.5"
-                    >
-                      <span>{att.participantCode}</span>
-                      <span className="text-[10px] text-slate-400">({att.firstName})</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+
             </div>
           )}
 
@@ -746,16 +831,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <button
-                              onClick={() => handleToggleCheckIn(att.id)}
-                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                                att.checkedIn
-                                  ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow'
-                              }`}
-                            >
-                              {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้างาน'}
-                            </button>
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleToggleCheckIn(att.id)}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                                  att.checkedIn
+                                    ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    : 'bg-orange-500 hover:bg-orange-600 text-white shadow'
+                                }`}
+                              >
+                                {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้างาน'}
+                              </button>
+                              <button
+                                onClick={() => handleOpenDeleteAttendeeModal(att)}
+                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-xs font-bold border border-red-200/80 transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                                title="ลบข้อมูลผู้ลงทะเบียน (ต้องยืนยันรหัสผ่าน Super Admin)"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>ลบ</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -895,6 +990,216 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: SCHEDULE EDITOR */}
+          {activeTab === 'scheduleEditor' && (
+            <div className="space-y-6">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-amber-500" />
+                    <span>จัดการกำหนดการจัดงานประจำวัน</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    เพิ่ม แก้ไข หรือลบกำหนดการกิจกรรม ตารางเวลา พิธีการ นิทรรศการ และสถานที่จัดงาน
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setNewSchedule({
+                      time: '08:30 - 09:30 น.',
+                      title: '',
+                      location: 'หอประชุมใหญ่ จุฬาภรณราชวิทยาลัย เลย',
+                      description: '',
+                      category: 'กิจกรรม',
+                    });
+                    setEditingScheduleIndex(null);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>ล้างฟอร์มเพิ่มช่วงเวลาใหม่</span>
+                </button>
+              </div>
+
+              {/* Form Box */}
+              <div className="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm space-y-4">
+                <h5 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                  <Edit className="w-4 h-4 text-amber-500" />
+                  <span>{editingScheduleIndex !== null ? 'แก้ไขกำหนดการช่วงเวลา' : 'ฟอร์มเพิ่มกำหนดการใหม่'}</span>
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">ช่วงเวลา (Time)</label>
+                    <input
+                      type="text"
+                      value={newSchedule.time}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, time: e.target.value })}
+                      placeholder="เช่น 08:30 - 09:30 น."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">ประเภทกิจกรรม (Category)</label>
+                    <select
+                      value={newSchedule.category}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, category: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                    >
+                      <option value="พิธีการ">พิธีการ</option>
+                      <option value="นิทรรศการ">นิทรรศการ</option>
+                      <option value="กิจกรรม">กิจกรรม</option>
+                      <option value="การแข่งขัน">การแข่งขัน</option>
+                      <option value="พักผ่อน">พักผ่อน</option>
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-700 font-bold mb-1">สถานที่จัดกิจกรรม (Location)</label>
+                    <input
+                      type="text"
+                      value={newSchedule.location}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, location: e.target.value })}
+                      placeholder="เช่น หอประชุมใหญ่ จุฬาภรณราชวิทยาลัย เลย"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-700 font-bold mb-1">หัวข้อย่อย / ชื่องาน (Title)</label>
+                    <input
+                      type="text"
+                      value={newSchedule.title}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, title: e.target.value })}
+                      placeholder="เช่น พิธีเปิด PCSHS Loei Open House 2026"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-amber-500 font-semibold"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-slate-700 font-bold mb-1">คำอธิบายรายละเอียด (Description)</label>
+                    <input
+                      type="text"
+                      value={newSchedule.description}
+                      onChange={(e) => setNewSchedule({ ...newSchedule, description: e.target.value })}
+                      placeholder="รายละเอียดการดำเนินกิจกรรมสังเขป..."
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  {editingScheduleIndex !== null && (
+                    <button
+                      onClick={() => {
+                        setEditingScheduleIndex(null);
+                        setNewSchedule({
+                          time: '08:30 - 09:30 น.',
+                          title: '',
+                          location: '',
+                          description: '',
+                          category: 'กิจกรรม',
+                        });
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      if (!newSchedule.time || !newSchedule.title) {
+                        alert('กรุณากรอกช่วงเวลาและหัวข้อกิจกรรม');
+                        return;
+                      }
+                      if (editingScheduleIndex !== null) {
+                        const updated = [...schedules];
+                        const itemToSave = { ...updated[editingScheduleIndex], ...newSchedule };
+                        updated[editingScheduleIndex] = itemToSave;
+                        setSchedules(updated);
+                        await saveScheduleToFirestore(itemToSave);
+                        addAuditLog('แก้ไขกำหนดการ', `ปรับปรุงกำหนดการ: ${newSchedule.title}`);
+                      } else {
+                        const newItem = {
+                          id: `sch_${Date.now()}`,
+                          ...newSchedule,
+                        };
+                        const updated = [...schedules, newItem];
+                        setSchedules(updated);
+                        await saveScheduleToFirestore(newItem);
+                        addAuditLog('เพิ่มกำหนดการใหม่', `เพิ่มกำหนดการ: ${newSchedule.title}`);
+                      }
+                      setEditingScheduleIndex(null);
+                      setNewSchedule({
+                        time: '08:30 - 09:30 น.',
+                        title: '',
+                        location: '',
+                        description: '',
+                        category: 'กิจกรรม',
+                      });
+                    }}
+                    className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs rounded-xl shadow transition-colors cursor-pointer"
+                  >
+                    {editingScheduleIndex !== null ? 'บันทึกการแก้ไข' : 'เพิ่มกำหนดการ'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Schedule Items List */}
+              <div className="space-y-3">
+                {schedules.map((sch, idx) => (
+                  <div
+                    key={sch.id || idx}
+                    className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1.5 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {sch.time}
+                        </span>
+                        <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                          {sch.category}
+                        </span>
+                        <span className="text-xs text-slate-500 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-orange-500 shrink-0" />
+                          {sch.location}
+                        </span>
+                      </div>
+                      <h5 className="font-bold text-slate-900 text-sm sm:text-base">{sch.title}</h5>
+                      {sch.description && <p className="text-xs text-slate-600">{sch.description}</p>}
+                    </div>
+
+                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                      <button
+                        onClick={() => {
+                          setEditingScheduleIndex(idx);
+                          setNewSchedule({ ...sch });
+                        }}
+                        className="p-2 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl cursor-pointer transition-colors text-xs font-bold flex items-center gap-1"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>แก้ไข</span>
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`คุณต้องการลบกำหนดการ "${sch.title}" ใช่หรือไม่?`)) {
+                            const updated = schedules.filter((_, i) => i !== idx);
+                            setSchedules(updated);
+                            if (sch.id) {
+                              await deleteScheduleFromFirestore(sch.id);
+                            }
+                            addAuditLog('ลบกำหนดการ', `ลบกำหนดการ: ${sch.title}`);
+                          }
+                        }}
+                        className="p-2 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl cursor-pointer transition-colors text-xs font-bold flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>ลบ</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1284,6 +1589,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 บันทึกกิจกรรม
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Super Admin Password Verification Modal for Deleting Attendee */}
+      {deletingAttendee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
+          <div className="relative w-full max-w-md bg-white border border-red-200 rounded-3xl p-6 shadow-2xl text-slate-900 animate-in fade-in zoom-in duration-200">
+            <button
+              onClick={() => setDeletingAttendee(null)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 text-red-600 mb-4">
+              <div className="p-3 bg-red-100 rounded-2xl shrink-0">
+                <Shield className="w-7 h-7 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">
+                  ยืนยันการลบข้อมูลผู้ลงทะเบียน
+                </h3>
+                <p className="text-xs text-red-600 font-semibold">
+                  (ต้องใส่รหัสผ่าน Super Admin เพื่อดำเนินการ)
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-4 text-xs space-y-1.5">
+              <p className="text-slate-500 font-medium">ผู้ลงทะเบียนที่จะถูกลบ:</p>
+              <p className="text-slate-900 font-bold text-sm">
+                {deletingAttendee.firstName} {deletingAttendee.lastName}
+              </p>
+              <p className="text-slate-600 font-mono">
+                รหัสประจำตัว: <span className="text-orange-600 font-bold">{deletingAttendee.participantCode}</span>
+              </p>
+              <p className="text-slate-600">
+                หน่วยงาน: {deletingAttendee.organization} ({deletingAttendee.province})
+              </p>
+              <p className="text-slate-600">
+                อีเมล / เบอร์โทร: {deletingAttendee.email} | {deletingAttendee.phone}
+              </p>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-3 leading-relaxed">
+              ⚠️ การลบนี้จะลบข้อมูลออกจากระบบและฐานข้อมูล Firebase (<code className="font-mono text-orange-600 font-bold">PCSHS-Loei-Open-House-2026-db</code>) อย่างถาวร ไม่สามารถกู้คืนได้
+            </p>
+
+            {superAdminPasswordError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold rounded-xl text-center">
+                {superAdminPasswordError}
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmDeleteAttendee} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  กรอกรหัสผ่าน Super Admin
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSuperAdminPassword ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    value={superAdminPasswordInput}
+                    onChange={(e) => {
+                      setSuperAdminPasswordInput(e.target.value);
+                      setSuperAdminPasswordError('');
+                    }}
+                    placeholder="กรอกรหัสผ่าน Super Admin..."
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-4 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-200 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSuperAdminPassword(!showSuperAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showSuperAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeletingAttendee(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-xl shadow-lg shadow-red-500/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>ลบข้อมูลผู้ลงทะเบียน</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>

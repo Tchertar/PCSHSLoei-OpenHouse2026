@@ -167,9 +167,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={onOpenLogin}
                   title="เข้าสู่ระบบ"
-                  className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-200 cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-blue-500/25 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 border border-blue-400/30"
                 >
-                  <LogIn className="w-3.5 h-3.5 text-slate-600" />
+                  <LogIn className="w-4 h-4 text-blue-100" />
                   <span>เข้าสู่ระบบ</span>
                 </button>
               </div>
@@ -270,9 +270,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onOpenLogin();
                   }}
-                  className="w-full py-2.5 bg-slate-100 text-slate-800 font-bold text-sm rounded-xl border border-slate-200 flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-98 cursor-pointer"
                 >
-                  <LogIn className="w-4 h-4 text-slate-600" />
+                  <LogIn className="w-4 h-4 text-blue-100" />
                   <span>เข้าสู่ระบบ</span>
                 </button>
               </div>

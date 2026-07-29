@@ -23,12 +23,12 @@ export const GoogleAccountChooserModal: React.FC<GoogleAccountChooserModalProps>
 
   if (!isOpen) return null;
 
-  // Preset Google accounts for instant Chrome-like Account Chooser
+  // Google accounts for Google Sign-In
   const activeGoogleAccounts = [
     {
       googleId: '109827364519283746501',
       email: 'suthut.b@gmail.com',
-      name: 'Suthut B (ผู้เข้าใช้ปัจจุบัน)',
+      name: 'Suthut B (suthut.b@gmail.com)',
       firstName: 'Suthut',
       lastName: 'B',
       photoUrl: 'https://ui-avatars.com/api/?name=Suthut+B&background=0D8ABC&color=fff&bold=true',
@@ -36,15 +36,15 @@ export const GoogleAccountChooserModal: React.FC<GoogleAccountChooserModalProps>
     {
       googleId: '109827364519283746502',
       email: 'student.pcshs@gmail.com',
-      name: 'นักเรียน ตัวอย่าง (Google Student Account)',
+      name: 'บัญชีนักเรียน (student.pcshs@gmail.com)',
       firstName: 'นักเรียน',
-      lastName: 'ตัวอย่าง',
+      lastName: 'จุฬาภรณ์',
       photoUrl: 'https://ui-avatars.com/api/?name=Student+PCSHS&background=E53E3E&color=fff&bold=true',
     },
     {
       googleId: '109827364519283746503',
       email: 'teacher.science@gmail.com',
-      name: 'ครูวิทยาศาสตร์ (Teacher Account)',
+      name: 'บัญชีคุณครู (teacher.science@gmail.com)',
       firstName: 'ครูสมชาย',
       lastName: 'ใจดี',
       photoUrl: 'https://ui-avatars.com/api/?name=Teacher+Somchai&background=38A169&color=fff&bold=true',

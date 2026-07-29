@@ -20,6 +20,7 @@ const ADMINS_COLLECTION = 'admins';
 const ACTIVITIES_COLLECTION = 'activities';
 const AUDIT_LOGS_COLLECTION = 'audit_logs';
 const MAP_BUILDINGS_COLLECTION = 'map_buildings';
+const SCHEDULES_COLLECTION = 'schedules';
 
 // --- ATTENDEES ---
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
@@ -224,3 +225,47 @@ export const deleteMapBuildingFromFirestore = async (id: string) => {
     console.error("Error deleting map building from Firestore:", err);
   }
 };
+
+// --- SCHEDULES ---
+export const subscribeSchedules = (callback: (data: any[]) => void) => {
+  const q = query(collection(db, SCHEDULES_COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    const list: any[] = [];
+    snapshot.forEach((docSnap) => {
+      list.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    callback(list);
+  }, (err) => {
+    console.error("Firestore schedules subscription error:", err);
+  });
+};
+
+export const saveScheduleToFirestore = async (item: any) => {
+  try {
+    const docId = item.id || `sch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const docRef = doc(db, SCHEDULES_COLLECTION, docId);
+    await setDoc(docRef, { ...item, id: docId }, { merge: true });
+    return docId;
+  } catch (err) {
+    console.error("Error saving schedule item to Firestore:", err);
+  }
+};
+
+export const saveAllSchedulesToFirestore = async (scheduleList: any[]) => {
+  try {
+    for (const item of scheduleList) {
+      await saveScheduleToFirestore(item);
+    }
+  } catch (err) {
+    console.error("Error bulk saving schedules to Firestore:", err);
+  }
+};
+
+export const deleteScheduleFromFirestore = async (id: string) => {
+  try {
+    await deleteDoc(doc(db, SCHEDULES_COLLECTION, id));
+  } catch (err) {
+    console.error("Error deleting schedule item from Firestore:", err);
+  }
+};
+
