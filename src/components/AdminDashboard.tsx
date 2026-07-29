@@ -17,6 +17,7 @@ import {
   UserCheck,
   Building,
   MapPin,
+  Map,
   Camera,
   Layers,
   Phone,
@@ -55,8 +56,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   auditLogs,
   addAuditLog,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'admins' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'admins' | 'logs' | 'mapEditor'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Map Layout Editor State
+  const [mapBuildings, setMapBuildings] = useState([
+    {
+      id: 'b1',
+      name: 'หอประชุมใหญ่ จุฬาภรณราชวิทยาลัย',
+      desc: 'จุดลงทะเบียนกลาง พิธีเปิด-ปิด และการแข่งขันหุ่นยนต์กู้ภัย',
+      zone: 'โซน A - อาคารอำนวยการ',
+    },
+    {
+      id: 'b2',
+      name: 'อาคารปฏิบัติการวิทยาศาสตร์ 1 (ฟิสิกส์ & ดาราศาสตร์)',
+      desc: 'นิทรรศการฟิสิกส์ ห้องจำลองดวงดาว และแล็บกลศาสตร์',
+      zone: 'โซน B - ฝั่งทิศตะวันออก',
+    },
+    {
+      id: 'b3',
+      name: 'อาคารปฏิบัติการวิทยาศาสตร์ 2 (เคมี & ชีววิทยา)',
+      desc: 'การสกัด DNA พืช การทดลองสารเรืองแสงเคมี และกล้องจุลทรรศน์',
+      zone: 'โซน B - ฝั่งทิศตะวันออก',
+    },
+    {
+      id: 'b4',
+      name: 'อาคารนวัตกรรมและเทคโนโลยีสารสนเทศ (ICT)',
+      desc: 'นิทรรศการนวัตกรรมเยาวชน การประกวดโครงงาน และการอบรม AI',
+      zone: 'โซน C - ฝั่งทิศเหนือ',
+    },
+    {
+      id: 'b5',
+      name: 'สนามฟุตบอลและลานกิจกรรมกลางแจ้ง',
+      desc: 'การแข่งขันจรวดขวดน้ำประเภทแม่นยำ และกิจกรรมสันทนาการ',
+      zone: 'โซน D - สนามกลาง',
+    },
+    {
+      id: 'b6',
+      name: 'โรงอาหารและซุ้มอาหารบริการผู้ร่วมงาน',
+      desc: 'จุดรับประทานอาหาร คูปองสวัสดิการ เครื่องดื่ม และจุดพักผ่อน',
+      zone: 'โซน E - ลานสวัสดิการ',
+    },
+  ]);
+
+  const [newBuilding, setNewBuilding] = useState({ name: '', desc: '', zone: '' });
+  const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
 
   // Scanner state
   const [scannedCodeInput, setScannedCodeInput] = useState('');
@@ -426,6 +470,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>จัดการสิทธิ์ Admin ({admins.length})</span>
             </button>
           )}
+
+          <button
+            onClick={() => setActiveTab('mapEditor')}
+            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'mapEditor'
+                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Map className="w-4 h-4 text-orange-500" />
+            <span>แก้ไขแผนผังงาน ({mapBuildings.length})</span>
+          </button>
 
           <button
             onClick={() => setActiveTab('logs')}
@@ -834,6 +890,159 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <Trash2 className="w-4 h-4" />
                             </button>
                           )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: MAP EDITOR */}
+          {activeTab === 'mapEditor' && (
+            <div className="space-y-6">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h4 className="font-bold text-slate-900 text-lg flex items-center gap-2">
+                    <Map className="w-5 h-5 text-orange-500" />
+                    <span>จัดการแผนผังงานและจุดจัดกิจกรรม</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    ปรับแต่งข้อมูลอาคาร โซนกิจกรรม รายละเอียด และตำแหน่งพิกัดแผนผังสำหรับแสดงในหน้าเว็บหลัก
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setNewBuilding({ name: '', desc: '', zone: '' });
+                    setEditingBuildingId(null);
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs rounded-xl shadow cursor-pointer flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>เพิ่มอาคาร/จุดกิจกรรมใหม่</span>
+                </button>
+              </div>
+
+              {/* Add/Edit Form Box */}
+              <div className="bg-white p-5 rounded-2xl border border-orange-200 shadow-sm space-y-4">
+                <h5 className="font-bold text-sm text-slate-800 flex items-center gap-2">
+                  <Edit className="w-4 h-4 text-orange-500" />
+                  <span>{editingBuildingId ? 'แก้ไขข้อมูลอาคาร' : 'ฟอร์มเพิ่มอาคาร/โซนใหม่'}</span>
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">ชื่ออาคาร / สถานที่</label>
+                    <input
+                      type="text"
+                      value={newBuilding.name}
+                      onChange={(e) => setNewBuilding({ ...newBuilding, name: e.target.value })}
+                      placeholder="เช่น อาคารปฏิบัติการวิทยาศาสตร์ 3"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">ชื่อโซน / ฝั่งสถานที่</label>
+                    <input
+                      type="text"
+                      value={newBuilding.zone}
+                      onChange={(e) => setNewBuilding({ ...newBuilding, zone: e.target.value })}
+                      placeholder="เช่น โซน F - อาคารเรียนรวม"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">รายละเอียดกิจกรรมในอาคาร</label>
+                    <input
+                      type="text"
+                      value={newBuilding.desc}
+                      onChange={(e) => setNewBuilding({ ...newBuilding, desc: e.target.value })}
+                      placeholder="เช่น นิทรรศการนวัตกรรม และการแข่งขันหุ่นยนต์"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  {editingBuildingId && (
+                    <button
+                      onClick={() => {
+                        setEditingBuildingId(null);
+                        setNewBuilding({ name: '', desc: '', zone: '' });
+                      }}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                    >
+                      ยกเลิก
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (!newBuilding.name || !newBuilding.zone) {
+                        alert('กรุณากรอกชื่ออาคารและโซนสถานที่');
+                        return;
+                      }
+                      if (editingBuildingId) {
+                        setMapBuildings(
+                          mapBuildings.map((b) =>
+                            b.id === editingBuildingId ? { ...b, ...newBuilding } : b
+                          )
+                        );
+                        addAuditLog('แก้ไขแผนผังงาน', `ปรับปรุงข้อมูลอาคาร ${newBuilding.name}`);
+                      } else {
+                        const newB = {
+                          id: `b-${Date.now()}`,
+                          ...newBuilding,
+                        };
+                        setMapBuildings([...mapBuildings, newB]);
+                        addAuditLog('เพิ่มแผนผังอาคาร', `เพิ่มอาคารใหม่ ${newBuilding.name}`);
+                      }
+                      setEditingBuildingId(null);
+                      setNewBuilding({ name: '', desc: '', zone: '' });
+                    }}
+                    className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow transition-colors cursor-pointer"
+                  >
+                    {editingBuildingId ? 'บันทึกการแก้ไข' : 'เพิ่มจุดจัดกิจกรรม'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Buildings List Table */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <table className="w-full text-left text-xs sm:text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-3">โซน / ฝั่ง</th>
+                      <th className="px-4 py-3">ชื่ออาคาร / สถานที่</th>
+                      <th className="px-4 py-3">รายละเอียดกิจกรรม</th>
+                      <th className="px-4 py-3 text-right">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {mapBuildings.map((b) => (
+                      <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-4 py-3 font-semibold text-blue-600 whitespace-nowrap">{b.zone}</td>
+                        <td className="px-4 py-3 font-bold text-slate-900">{b.name}</td>
+                        <td className="px-4 py-3 text-slate-600">{b.desc}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap space-x-1">
+                          <button
+                            onClick={() => {
+                              setEditingBuildingId(b.id);
+                              setNewBuilding({ name: b.name, desc: b.desc, zone: b.zone });
+                            }}
+                            className="p-1.5 text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg cursor-pointer transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`ต้องการลบอาคาร "${b.name}" ออกจากแผนผังหรือไม่?`)) {
+                                setMapBuildings(mapBuildings.filter((item) => item.id !== b.id));
+                                addAuditLog('ลบอาคารแผนผัง', `ลบอาคาร ${b.name}`);
+                              }
+                            }}
+                            className="p-1.5 text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))}

@@ -7,6 +7,7 @@ interface LoginModalProps {
   onClose: () => void;
   adminsList: AdminUser[];
   attendeesList: Attendee[];
+  initialTab?: 'admin' | 'user';
   onAdminLoginSuccess: (admin: AdminUser) => void;
   onAttendeeLoginSuccess: (attendee: Attendee) => void;
 }
@@ -16,10 +17,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   adminsList,
   attendeesList,
+  initialTab = 'admin',
   onAdminLoginSuccess,
   onAttendeeLoginSuccess,
 }) => {
-  const [tab, setTab] = useState<'admin' | 'user'>('admin');
+  const [tab, setTab] = useState<'admin' | 'user'>(initialTab);
+
+  React.useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab, isOpen]);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [userQuery, setUserQuery] = useState('');

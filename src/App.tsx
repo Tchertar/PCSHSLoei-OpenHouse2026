@@ -26,7 +26,6 @@ import { RegistrationModal } from './components/RegistrationModal';
 import { ProfileTicketModal } from './components/ProfileTicketModal';
 import { LoginModal } from './components/LoginModal';
 import { AdminDashboard } from './components/AdminDashboard';
-import { EmailTriggerModal } from './components/EmailTriggerModal';
 
 import {
   subscribeAttendees,
@@ -88,7 +87,6 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
-  const [isEmailNotifyOpen, setIsEmailNotifyOpen] = useState(false);
 
   // Sync states to LocalStorage
   useEffect(() => {
@@ -137,15 +135,21 @@ export default function App() {
   };
 
   // Handlers
-  const handleRegisterSuccess = (newAttendee: Attendee) => {
-    setAttendees((prev) => [newAttendee, ...prev]);
+  const handleRegisterSuccess = (newAttendee: Attendee, isExisting?: boolean) => {
+    if (!isExisting) {
+      setAttendees((prev) => {
+        if (prev.some((a) => a.id === newAttendee.id || a.email === newAttendee.email)) return prev;
+        return [newAttendee, ...prev];
+      });
+      addAuditLog('ลงทะเบียนใหม่', `ผู้เข้าร่วมใหม่ ${newAttendee.participantCode} (${newAttendee.firstName} ${newAttendee.lastName})`);
+      saveAttendeeToFirestore(newAttendee);
+    } else {
+      addAuditLog('เข้าสู่ระบบอัตโนมัติ', `ผู้เข้าร่วม ${newAttendee.participantCode} (${newAttendee.email}) เข้าสู่ระบบผ่านปุ่มลงทะเบียนซ้ำ`);
+    }
+
     setCurrentAttendee(newAttendee);
     setIsRegisterOpen(false);
     setIsProfileOpen(true);
-    addAuditLog('ลงทะเบียนใหม่', `ผู้เข้าร่วมใหม่ ${newAttendee.participantCode} (${newAttendee.firstName} ${newAttendee.lastName})`);
-    
-    // Persist to Firebase Firestore
-    saveAttendeeToFirestore(newAttendee);
   };
 
   const handleAdminLoginSuccess = (admin: AdminUser) => {
@@ -185,7 +189,6 @@ export default function App() {
           onOpenLogin={() => setIsLoginOpen(true)}
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
-          onOpenEmailNotify={() => setIsEmailNotifyOpen(true)}
           onLogout={handleLogout}
           onRegisterClick={() => setIsRegisterOpen(true)}
         />
@@ -271,6 +274,7 @@ export default function App() {
       <RegistrationModal
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
+        existingAttendees={attendees}
         onRegisterSuccess={handleRegisterSuccess}
       />
 
@@ -307,13 +311,6 @@ export default function App() {
           addAuditLog={addAuditLog}
         />
       )}
-
-      {/* Email Trigger Background Service Modal */}
-      <EmailTriggerModal
-        isOpen={isEmailNotifyOpen}
-        onClose={() => setIsEmailNotifyOpen(false)}
-        attendees={attendees}
-      />
     </div>
   );
 }

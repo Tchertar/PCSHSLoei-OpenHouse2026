@@ -198,7 +198,7 @@ export const ProfileTicketModal: React.FC<ProfileTicketModalProps> = ({
               <div className="flex flex-col items-center justify-center bg-slate-50 p-4 rounded-xl border border-slate-200 text-center">
                 <div className="bg-white p-2 rounded-lg shadow-md mb-2">
                   <QRCodeSVG
-                    value={attendee.qrCodeData || attendee.participantCode}
+                    value={attendee.participantCode}
                     size={130}
                     level="H"
                     includeMargin={false}

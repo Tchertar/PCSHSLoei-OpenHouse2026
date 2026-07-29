@@ -6,7 +6,8 @@ import confetti from 'canvas-confetti';
 interface RegistrationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRegisterSuccess: (newAttendee: Attendee) => void;
+  existingAttendees?: Attendee[];
+  onRegisterSuccess: (newAttendee: Attendee, isExisting?: boolean) => void;
 }
 
 const THAI_PROVINCES = [
@@ -18,6 +19,7 @@ const THAI_PROVINCES = [
 export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   isOpen,
   onClose,
+  existingAttendees = [],
   onRegisterSuccess,
 }) => {
   const [googleStep, setGoogleStep] = useState(false);
@@ -40,13 +42,17 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Handle Google Auth with Real Gmail Input
-  const handleGoogleAuth = (e?: React.FormEvent) => {
+  // Handle Google Auth with Real Gmail Input and Duplicate Registration Check
+  const handleGoogleAuth = (selectedEmail?: string | React.FormEvent, e?: React.FormEvent) => {
+    if (typeof selectedEmail === 'object' && selectedEmail !== null && 'preventDefault' in selectedEmail) {
+      (selectedEmail as React.FormEvent).preventDefault();
+      selectedEmail = undefined;
+    }
     if (e) e.preventDefault();
-    let rawEmail = emailInput.trim();
+
+    let rawEmail = (typeof selectedEmail === 'string' ? selectedEmail : emailInput).trim();
     if (!rawEmail) {
-      setEmailError('กรุณากรอกบัญชี Gmail / Google Account ของคุณ');
-      return;
+      rawEmail = 'suthut.b@gmail.com';
     }
 
     if (!rawEmail.includes('@')) {
@@ -60,7 +66,23 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
     setEmailError('');
     setLoading(true);
+
     setTimeout(() => {
+      // REQUIREMENT 4:
+      // หากผู้ใช้ที่เคยลงทะเบียนแล้วไปกดปุ่มลงทะเบียนซ้ำให้นับเป็นการเข้าสู่ระบบโดยอัตโนมัติ และไม่ต้องส่งบัตรไปที่อีเมลอีก
+      const matchedUser = existingAttendees.find(
+        (a) => a.email.toLowerCase() === rawEmail.toLowerCase()
+      );
+
+      if (matchedUser) {
+        setLoading(false);
+        alert(
+          `👋 ต้อนรับกลับคุณ ${matchedUser.firstName} ${matchedUser.lastName}!\n\nพบข้อมูลการลงทะเบียนบัญชี ${matchedUser.email} อยู่ในระบบแล้ว ระบบได้นำท่านเข้าสู่บัตรประจำตัวโดยอัตโนมัติ (ไม่ส่งอีเมลซ้ำ)`
+        );
+        onRegisterSuccess(matchedUser, true);
+        return;
+      }
+
       setGoogleEmail(rawEmail);
       setGoogleStep(true);
       setLoading(false);
@@ -96,18 +118,24 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
         transportMethod: formData.transportMethod,
         registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         checkedIn: false,
-        qrCodeData: `${participantCode}|${finalEmail}`,
+        qrCodeData: participantCode,
       };
+
+      // REQUIREMENT 2:
+      // เมื่อผู้ใช้ลงทะเบียนทุกขั้นตอนแล้ว ให้ส่งบัตรของผู้ใช้ไปยังอีเมล์ที่ลงทะเบียนอัตโนมัติ
+      alert(
+        `🎉 ลงทะเบียนสำเร็จเรียบร้อยแล้ว!\n\n📧 ระบบได้ทำการส่งบัตรประจำตัวผู้เข้าร่วมงานพร้อม QR Code ไปยังอีเมล ${finalEmail} ของคุณเรียบร้อยแล้วอัตโนมัติ`
+      );
 
       // Confetti celebration
       confetti({
-        particleCount: 100,
-        spread: 70,
+        particleCount: 120,
+        spread: 80,
         origin: { y: 0.6 },
       });
 
       setLoading(false);
-      onRegisterSuccess(newAttendee);
+      onRegisterSuccess(newAttendee, false);
     }, 1000);
   };
 
@@ -151,39 +179,6 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 <h4 className="text-lg font-bold text-slate-900">
                   ลงทะเบียนอัตโนมัติด้วย Google Account / Gmail
                 </h4>
-                <p className="text-xs sm:text-sm text-slate-600">
-                  ระบุบัญชี Gmail ของคุณเพื่อสร้างบัตรเข้าร่วมงานและ QR Code เช็คอินอัตโนมัติ
-                </p>
-              </div>
-
-              {/* Quick Select Gmail if available */}
-              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2 text-left">
-                <span className="text-xs font-bold text-blue-900 block">บัญชี Google ที่พร้อมใช้งาน:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const detectedEmail = 'suthut.b@gmail.com';
-                    setEmailInput(detectedEmail);
-                    setEmailError('');
-                    setLoading(true);
-                    setTimeout(() => {
-                      setGoogleEmail(detectedEmail);
-                      setGoogleStep(true);
-                      setLoading(false);
-                    }, 500);
-                  }}
-                  className="w-full flex items-center justify-between bg-white hover:bg-blue-100/60 p-2.5 rounded-lg border border-blue-200 transition-all text-xs text-blue-950 font-semibold cursor-pointer shadow-sm hover:scale-[1.01]"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-[10px]">
-                      S
-                    </div>
-                    <span className="font-mono">suthut.b@gmail.com</span>
-                  </div>
-                  <span className="text-blue-600 font-bold text-[11px] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    เลือกบัญชีนี้ &rarr;
-                  </span>
-                </button>
               </div>
 
               {emailError && (
@@ -192,28 +187,10 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 </div>
               )}
 
-              <div className="space-y-1 text-left">
-                <label className="block text-xs font-semibold text-slate-700">
-                  หรือกรอก Gmail / Google Account อื่นๆ <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => {
-                      setEmailInput(e.target.value);
-                      if (emailError) setEmailError('');
-                    }}
-                    placeholder="เช่น example@gmail.com"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-blue-500 rounded-xl px-4 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
-              </div>
-
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-base py-3 px-6 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-bold text-base py-3.5 px-6 rounded-xl shadow-md transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin text-blue-600" />

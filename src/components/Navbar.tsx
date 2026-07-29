@@ -1,25 +1,46 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, ChevronDown, HelpCircle, LogIn, LogOut, Map, Menu, Bell, Shield, UserCheck, Utensils, X, Trophy } from 'lucide-react';
+import { Calendar, ChevronDown, HelpCircle, LogOut, Map, Menu, Shield, UserCheck, X, Trophy } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;
   currentAdmin: AdminUser | null;
   onOpenLogin: () => void;
+  onOpenUserLogin?: () => void;
   onOpenProfile: () => void;
   onOpenAdminDashboard: () => void;
-  onOpenEmailNotify: () => void;
   onLogout: () => void;
   onRegisterClick: () => void;
 }
+
+const GoogleLogoSVG = () => (
+  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+    <path
+      fill="#4285F4"
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+    />
+  </svg>
+);
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentAttendee,
   currentAdmin,
   onOpenLogin,
+  onOpenUserLogin,
   onOpenProfile,
   onOpenAdminDashboard,
-  onOpenEmailNotify,
   onLogout,
   onRegisterClick,
 }) => {
@@ -28,8 +49,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   const navLinks = [
     { name: 'กิจกรรม&การแข่งขัน', href: '#activities', icon: Trophy },
     { name: 'แผนผังงาน', href: '#map', icon: Map },
-    { name: 'ประกาศข่าวสาร', href: '#news', icon: Calendar },
     { name: 'กำหนดการ', href: '#schedule', icon: Calendar },
+    { name: 'ข่าวสาร', href: '#news', icon: Calendar },
     { name: 'คำถามที่พบบ่อย (FAQ)', href: '#faq', icon: HelpCircle },
   ];
 
@@ -43,23 +64,25 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-md">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
-          {/* Left: Logo & Event Name */}
+        <div className="flex items-center justify-between h-20 gap-4">
+          
+          {/* GROUP 1: BRAND LOGO & TITLE (NO FRAME AROUND LOGO, FLOATING ANIMATION) */}
           <a
             href="#"
             onClick={(e) => {
               e.preventDefault();
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className="flex items-center gap-3 group cursor-pointer"
+            className="flex items-center gap-3.5 group cursor-pointer shrink-0"
           >
-            <div className="relative w-12 h-12 rounded-full overflow-hidden bg-slate-100 p-1 ring-2 ring-blue-500/20 group-hover:scale-105 transition-transform">
+            {/* Frameless Animated Logo */}
+            <div className="relative w-12 h-12 flex items-center justify-center transition-all duration-300 ease-out transform group-hover:scale-110 group-hover:-rotate-3">
               <img
                 src="https://lh3.googleusercontent.com/d/1T0ODWeiPCRfSDbV3O93tf4VZZp57goDE"
                 alt="PCSHS Loei Open House 2026 Logo"
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain filter drop-shadow-md select-none"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src =
@@ -77,8 +100,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </a>
 
-          {/* Center Links (Desktop) */}
-          <nav className="hidden lg:flex items-center space-x-1 xl:space-x-2">
+          {/* GROUP 2: CENTER NAVIGATION LINKS */}
+          <nav className="hidden lg:flex items-center space-x-1 xl:space-x-1.5 bg-slate-50/80 p-1.5 rounded-full border border-slate-200/80 shadow-inner">
             {navLinks.map((link) => {
               const Icon = link.icon;
               return (
@@ -86,33 +109,22 @@ export const Navbar: React.FC<NavbarProps> = ({
                   key={link.name}
                   href={link.href}
                   onClick={(e) => handleNavClick(e, link.href)}
-                  className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+                  className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 hover:bg-white px-3.5 py-1.5 rounded-full text-xs xl:text-sm font-semibold transition-all hover:shadow-sm"
                 >
-                  <Icon className="w-4 h-4 text-orange-500" />
+                  <Icon className="w-3.5 h-3.5 text-orange-500" />
                   <span>{link.name}</span>
                 </a>
               );
             })}
           </nav>
 
-          {/* Right Action Buttons */}
-          <div className="hidden sm:flex items-center gap-2">
-            {/* Email Trigger status button */}
-            <button
-              onClick={onOpenEmailNotify}
-              title="ระบบแจ้งเตือนอีเมลอัตโนมัติ 1 วันก่อนงาน"
-              className="p-2 text-slate-600 hover:text-orange-600 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer relative"
-            >
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-orange-500 rounded-full animate-ping" />
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-orange-500 rounded-full" />
-            </button>
-
+          {/* GROUP 3: AUTH & ACTIONS (SIGN IN WITH GOOGLE OAUTH 2.0) */}
+          <div className="hidden sm:flex items-center gap-2.5">
             {currentAdmin ? (
               <div className="flex items-center gap-2">
                 <button
                   onClick={onOpenAdminDashboard}
-                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium text-xs sm:text-sm px-4 py-2 rounded-lg shadow cursor-pointer"
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow cursor-pointer transition-transform hover:scale-105"
                 >
                   <Shield className="w-4 h-4 text-amber-300" />
                   <span>จัดการระบบ ({currentAdmin.role === 'super_admin' ? 'Super Admin' : 'Admin'})</span>
@@ -120,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={onLogout}
                   title="ออกจากระบบ"
-                  className="p-2 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg border border-slate-200 cursor-pointer transition-colors"
+                  className="p-2.5 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -129,34 +141,38 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={onOpenProfile}
-                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-medium text-xs sm:text-sm px-4 py-2 rounded-lg shadow cursor-pointer"
+                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-medium text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow cursor-pointer transition-transform hover:scale-105"
                 >
                   <UserCheck className="w-4 h-4 text-emerald-100" />
-                  <span>บัตรผู้เข้าร่วมงาน ({currentAttendee.firstName})</span>
+                  <span>บัตรประจำตัว ({currentAttendee.firstName})</span>
                 </button>
                 <button
                   onClick={onLogout}
                   title="ออกจากระบบ"
-                  className="p-2 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg border border-slate-200 cursor-pointer transition-colors"
+                  className="p-2.5 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={onOpenLogin}
-                  className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-lg text-sm font-medium border border-slate-200 cursor-pointer transition-colors"
-                >
-                  <Shield className="w-4 h-4 text-blue-600" />
-                  <span>ระบบ Admin</span>
-                </button>
-
+                {/* Single Primary Action: Sign in with Google (OAuth 2.0) */}
                 <button
                   onClick={onRegisterClick}
-                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm px-4 py-2 rounded-lg shadow-md hover:shadow-orange-500/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                  className="flex items-center gap-2.5 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs sm:text-sm px-4.5 py-2.5 rounded-xl border border-slate-300 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer ring-2 ring-blue-500/10 hover:ring-blue-500/30"
                 >
-                  ลงทะเบียนเข้าร่วม
+                  <GoogleLogoSVG />
+                  <span>Sign in with Google</span>
+                </button>
+
+                {/* Admin Portal Direct Link */}
+                <button
+                  onClick={onOpenLogin}
+                  title="สำหรับผู้ดูแลระบบ (Admin)"
+                  className="flex items-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 cursor-pointer transition-colors"
+                >
+                  <Shield className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Admin</span>
                 </button>
               </div>
             )}
@@ -166,7 +182,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2 lg:hidden">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2.5 text-slate-700 hover:text-slate-900 bg-slate-100 rounded-lg cursor-pointer"
+              className="p-2.5 text-slate-700 hover:text-slate-900 bg-slate-100 rounded-xl cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -185,7 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   key={link.name}
                   href={link.href}
                   onClick={(e) => handleNavClick(e, link.href)}
-                  className="flex items-center gap-2 text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-3 py-2.5 rounded-lg text-base font-medium"
+                  className="flex items-center gap-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-3 py-2.5 rounded-xl text-base font-medium"
                 >
                   <Icon className="w-5 h-5 text-orange-500" />
                   <span>{link.name}</span>
@@ -195,17 +211,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="pt-4 border-t border-slate-200 flex flex-col gap-2">
-            <button
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenEmailNotify();
-              }}
-              className="flex items-center justify-center gap-2 bg-slate-100 text-slate-700 py-2.5 rounded-lg font-medium text-sm border border-slate-200"
-            >
-              <Bell className="w-4 h-4 text-orange-500" />
-              <span>ระบบแจ้งเตือนทางอีเมล 1 วันล่วงหน้า</span>
-            </button>
-
             {currentAdmin ? (
               <div className="flex flex-col gap-2">
                 <button
@@ -213,7 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onOpenAdminDashboard();
                   }}
-                  className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2"
                 >
                   <Shield className="w-4 h-4" />
                   <span>จัดการระบบ ({currentAdmin.role})</span>
@@ -223,7 +228,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full py-2 bg-red-50 text-red-600 rounded-lg font-medium text-sm border border-red-200"
+                  className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm border border-red-200"
                 >
                   ออกจากระบบ
                 </button>
@@ -235,7 +240,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onOpenProfile();
                   }}
-                  className="w-full py-2.5 bg-emerald-600 text-white rounded-lg font-bold text-sm flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2"
                 >
                   <UserCheck className="w-4 h-4" />
                   <span>ดูบัตรประจำตัว ({currentAttendee.firstName})</span>
@@ -245,30 +250,31 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full py-2 bg-red-50 text-red-600 rounded-lg font-medium text-sm border border-red-200"
+                  className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm border border-red-200"
                 >
                   ออกจากระบบ
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
                     onRegisterClick();
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-base rounded-lg shadow-lg"
+                  className="w-full py-3 bg-white text-slate-900 border border-slate-300 font-bold text-base rounded-xl shadow-md flex items-center justify-center gap-3"
                 >
-                  ลงทะเบียนด้วย Google Account
+                  <GoogleLogoSVG />
+                  <span>Sign in with Google (OAuth 2.0)</span>
                 </button>
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
                     onOpenLogin();
                   }}
-                  className="w-full py-2.5 bg-slate-100 text-slate-700 font-medium text-sm rounded-lg border border-slate-200"
+                  className="w-full py-2.5 bg-slate-100 text-slate-700 font-medium text-sm rounded-xl border border-slate-200"
                 >
-                  ระบบ Admin
+                  ระบบผู้ดูแลระบบ (Admin)
                 </button>
               </div>
             )}
@@ -278,3 +284,4 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
+
