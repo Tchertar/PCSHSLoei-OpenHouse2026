@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Search } from 'lucide-react';
+import { Sparkles, Search, FileText, Download } from 'lucide-react';
 
 export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterClick }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -152,8 +152,8 @@ export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterCl
       </div>
 
       {/* Quick Action Bar BELOW banner image */}
-      <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/90 text-white rounded-2xl px-5 py-3.5 shadow-xl border border-slate-800/80 backdrop-blur-md">
-        <div className="flex items-center gap-3 text-center sm:text-left">
+      <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-900/90 text-white rounded-2xl px-5 py-3.5 shadow-xl border border-slate-800/80 backdrop-blur-md">
+        <div className="flex items-center gap-3 text-center md:text-left">
           <span className="relative flex h-3 w-3 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
@@ -163,13 +163,25 @@ export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterCl
           </span>
         </div>
 
-        <button
-          onClick={onRegisterClick}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30 shrink-0"
-        >
-          <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
-          <span>ลงทะเบียนเข้าร่วมงานด่วน</span>
-        </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto shrink-0">
+          <a
+            href="https://drive.google.com/file/d/15bBeF8VnE4SvJ7eHMNuENl93ea7nMDgT/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-blue-400/30"
+          >
+            <FileText className="w-4 h-4 text-blue-200" />
+            <span>ดาวน์โหลดกำหนดการ (PDF)</span>
+          </a>
+
+          <button
+            onClick={onRegisterClick}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30"
+          >
+            <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
+            <span>ลงทะเบียนเข้าร่วมงานด่วน</span>
+          </button>
+        </div>
       </div>
     </section>
   );
