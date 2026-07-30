@@ -3,6 +3,65 @@ import React from 'react';
 export const BackgroundSky: React.FC = () => {
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden transition-all duration-1000 ease-in-out">
+      {/* Keyframes for Ladybug flight */}
+      <style>{`
+        @keyframes flyLadybug {
+          0% {
+            left: 8%;
+            bottom: 45px;
+            transform: scaleX(1) rotate(-8deg);
+          }
+          25% {
+            left: 32%;
+            bottom: 95px;
+            transform: scaleX(1) rotate(12deg);
+          }
+          48% {
+            left: 80%;
+            bottom: 55px;
+            transform: scaleX(1) rotate(-4deg);
+          }
+          50% {
+            left: 82%;
+            bottom: 55px;
+            transform: scaleX(-1) rotate(-4deg);
+          }
+          75% {
+            left: 42%;
+            bottom: 115px;
+            transform: scaleX(-1) rotate(10deg);
+          }
+          98% {
+            left: 10%;
+            bottom: 50px;
+            transform: scaleX(-1) rotate(-8deg);
+          }
+          100% {
+            left: 8%;
+            bottom: 45px;
+            transform: scaleX(1) rotate(-8deg);
+          }
+        }
+
+        @keyframes flutterWings {
+          0%, 100% {
+            transform: scaleY(1) rotate(0deg);
+          }
+          50% {
+            transform: scaleY(0.25) rotate(18deg);
+          }
+        }
+
+        .animate-ladybug-fly {
+          animation: flyLadybug 12s ease-in-out infinite;
+        }
+
+        .animate-wing-flutter {
+          animation: flutterWings 0.1s ease-in-out infinite;
+          transform-origin: center top;
+        }
+      `}</style>
+
       {/* ---------------- DAYTIME MODE ---------------- */}
       <div className="absolute inset-0 bg-gradient-to-b from-sky-300 via-blue-100 to-amber-50/80">
         {/* Sun & Golden Rays */}
@@ -26,17 +85,15 @@ export const BackgroundSky: React.FC = () => {
         <div className="absolute top-1/3 left-1/5 w-2 h-2 bg-amber-300 rounded-full blur-[0.5px] animate-ping opacity-60" />
         <div className="absolute top-1/2 left-2/3 w-3 h-3 bg-amber-200 rounded-full blur-[0.5px] animate-pulse opacity-50" />
 
-        {/* SUNFLOWERS (4 Sunflowers: 2 Large + 2 Small) */}
+        {/* SUNFLOWERS ZONE */}
 
         {/* 1. Main Large Sunflower - Bottom Left */}
         <div className="absolute bottom-0 left-2 sm:left-8 w-36 sm:w-56 h-auto z-10 opacity-90 animate-sway pointer-events-none">
           <svg viewBox="0 0 200 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Stem & Leaves */}
             <path d="M100 240 C100 180, 95 120, 100 80" stroke="#15803d" strokeWidth="8" strokeLinecap="round" />
             <path d="M100 160 Q60 140 40 150 Q75 185 100 165" fill="#16a34a" />
             <path d="M100 130 Q140 110 160 120 Q125 155 100 135" fill="#15803d" />
 
-            {/* Sunflower Petals */}
             <g transform="translate(100, 80)">
               {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle, i) => (
                 <ellipse
@@ -49,10 +106,8 @@ export const BackgroundSky: React.FC = () => {
                   transform={`rotate(${angle})`}
                 />
               ))}
-              {/* Center Core */}
               <circle cx="0" cy="0" r="22" fill="#78350f" />
               <circle cx="0" cy="0" r="18" fill="#451a03" />
-              {/* Inner Dots */}
               <circle cx="-6" cy="-6" r="2" fill="#d97706" opacity="0.8" />
               <circle cx="6" cy="6" r="2" fill="#d97706" opacity="0.8" />
               <circle cx="6" cy="-6" r="2" fill="#fbbf24" opacity="0.8" />
@@ -60,7 +115,7 @@ export const BackgroundSky: React.FC = () => {
           </svg>
         </div>
 
-        {/* 2. Small Sunflower #1 - Bottom Left (Next to main left sunflower) */}
+        {/* 2. Small Sunflower #1 - Bottom Left */}
         <div
           className="absolute bottom-0 left-28 sm:left-52 w-20 sm:w-32 h-auto z-10 opacity-85 animate-sway pointer-events-none"
           style={{ animationDelay: '-1.5s' }}
@@ -86,7 +141,7 @@ export const BackgroundSky: React.FC = () => {
           </svg>
         </div>
 
-        {/* 3. Small Sunflower #2 - Bottom Right (Next to main right sunflower) */}
+        {/* 3. Small Sunflower #2 - Bottom Right */}
         <div
           className="absolute bottom-0 right-28 sm:right-48 w-18 sm:w-28 h-auto z-10 opacity-80 animate-sway pointer-events-none"
           style={{ animationDelay: '-3.2s' }}
@@ -137,6 +192,43 @@ export const BackgroundSky: React.FC = () => {
               <circle cx="0" cy="0" r="14" fill="#451a03" />
             </g>
           </svg>
+        </div>
+
+        {/* 5. FLYING LADYBUG (แมงเต่าทอง บินไปมาระหว่างดอกทานตะวัน) */}
+        <div className="absolute z-30 pointer-events-none animate-ladybug-fly">
+          <div className="relative w-8 h-8 sm:w-10 sm:h-10 filter drop-shadow-md">
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              {/* Fluttering Translucent Wings */}
+              <g className="animate-wing-flutter">
+                <ellipse cx="38" cy="42" rx="20" ry="32" fill="#ffffff" opacity="0.65" transform="rotate(-30 38 42)" />
+                <ellipse cx="62" cy="42" rx="20" ry="32" fill="#ffffff" opacity="0.65" transform="rotate(30 62 42)" />
+              </g>
+
+              {/* Black Head & Antennae */}
+              <circle cx="50" cy="24" r="14" fill="#0f172a" />
+              <path d="M 44 14 C 40 8, 32 6, 28 8" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="28" cy="8" r="2.5" fill="#0f172a" />
+              <path d="M 56 14 C 60 8, 68 6, 72 8" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" />
+              <circle cx="72" cy="8" r="2.5" fill="#0f172a" />
+              {/* Eyes */}
+              <circle cx="44" cy="20" r="2.5" fill="#ffffff" />
+              <circle cx="56" cy="20" r="2.5" fill="#ffffff" />
+
+              {/* Red Shell Body */}
+              <ellipse cx="50" cy="58" rx="28" ry="32" fill="#ef4444" stroke="#b91c1c" strokeWidth="2" />
+
+              {/* Center Division Line */}
+              <line x1="50" y1="28" x2="50" y2="90" stroke="#0f172a" strokeWidth="3.5" />
+
+              {/* Black Spots on Shell */}
+              <circle cx="36" cy="48" r="5" fill="#0f172a" />
+              <circle cx="64" cy="48" r="5" fill="#0f172a" />
+              <circle cx="32" cy="66" r="4.5" fill="#0f172a" />
+              <circle cx="68" cy="66" r="4.5" fill="#0f172a" />
+              <circle cx="40" cy="80" r="3.5" fill="#0f172a" />
+              <circle cx="60" cy="80" r="3.5" fill="#0f172a" />
+            </svg>
+          </div>
         </div>
       </div>
 

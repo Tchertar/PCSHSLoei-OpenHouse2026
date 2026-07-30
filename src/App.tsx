@@ -325,13 +325,15 @@ export default function App() {
               <span>เปิดระบบลงทะเบียนเข้าร่วมงานออนไลน์แล้ววันนี้</span>
             </span>
 
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight">
-              มหกรรมเปิดบ้านวิทยาศาสตร์ PCSHS Loei Open House 2026
+            <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight flex flex-col items-center justify-center gap-1 sm:gap-2">
+              <span>PCSHS Loei Open House 2026</span>
+              <span>มหกรรมเปิดบ้านวิทยาศาสตร์</span>
             </h1>
 
-            <p className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-              จุดประกายความคิด บ่มเพาะนักวิทยาศาสตร์รุ่นเยาว์ ร่วมชมนิทรรศการนวัตกรรม และลงทะเบียนแข่งขันฟรี พร้อมรับเกียรติบัตรเข้าร่วมงาน
-            </p>
+            <div className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto mb-8 leading-relaxed flex flex-col items-center justify-center gap-1 font-medium">
+              <span>Academic - Challenge - Innovation Expo</span>
+              <span>จุดประกายความคิด บ่มเพาะนักวิทย์รุ่นเยาว์</span>
+            </div>
 
             {currentAttendee ? (
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

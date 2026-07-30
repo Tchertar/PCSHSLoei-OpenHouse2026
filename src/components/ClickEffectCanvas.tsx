@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 
-interface Particle {
+interface StardustParticle {
   x: number;
   y: number;
   vx: number;
@@ -12,10 +12,12 @@ interface Particle {
   maxLife: number;
   rotation: number;
   rotSpeed: number;
-  type: 'star' | 'circle' | 'spark' | 'ring';
+  points: number;
+  twinkleSpeed: number;
+  type: 'star4' | 'star5' | 'glitter' | 'spark';
 }
 
-interface ClickRipple {
+interface CosmicRing {
   x: number;
   y: number;
   radius: number;
@@ -26,8 +28,8 @@ interface ClickRipple {
 
 export const ClickEffectCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const particlesRef = useRef<Particle[]>([]);
-  const ripplesRef = useRef<ClickRipple[]>([]);
+  const particlesRef = useRef<StardustParticle[]>([]);
+  const ringsRef = useRef<CosmicRing[]>([]);
   const animFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -40,7 +42,17 @@ export const ClickEffectCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    const colors = ['#F97316', '#FB923C', '#38BDF8', '#818CF8', '#F43F5E', '#10B981', '#FBBF24', '#A855F7'];
+    // Cosmic stardust color palette
+    const stardustColors = [
+      '#FBBF24', // Gold
+      '#F59E0B', // Amber
+      '#38BDF8', // Starlight Cyan
+      '#C084FC', // Nebula Purple
+      '#E879F9', // Cosmic Pink
+      '#F43F5E', // Nova Red
+      '#34D399', // Emerald Dust
+      '#FFFFFF', // Pure White Star
+    ];
 
     const handlePointerDown = (e: MouseEvent | TouchEvent) => {
       let x = 0;
@@ -53,42 +65,47 @@ export const ClickEffectCanvas: React.FC = () => {
         y = e.touches[0].clientY;
       }
 
-      // 1. Add expanding click ripple rings
-      ripplesRef.current.push({
-        x,
-        y,
-        radius: 4,
-        maxRadius: 42,
-        alpha: 0.9,
-        color: colors[Math.floor(Math.random() * colors.length)],
-      });
-      ripplesRef.current.push({
+      // 1. Expanding Cosmic Stardust Rings
+      ringsRef.current.push({
         x,
         y,
         radius: 2,
-        maxRadius: 65,
+        maxRadius: 55,
+        alpha: 0.9,
+        color: stardustColors[Math.floor(Math.random() * stardustColors.length)],
+      });
+      ringsRef.current.push({
+        x,
+        y,
+        radius: 1,
+        maxRadius: 85,
         alpha: 0.6,
         color: '#FFFFFF',
       });
 
-      // 2. Add colorful particle burst
-      const count = 18;
+      // 2. Burst of Stardust Sparkles (สะเก็ดดาว)
+      const count = 32;
       for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
-        const speed = Math.random() * 5 + 2.5;
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.8;
+        const speed = Math.random() * 7 + 2;
+        const pType: 'star4' | 'star5' | 'glitter' | 'spark' =
+          i % 4 === 0 ? 'star4' : i % 4 === 1 ? 'star5' : i % 4 === 2 ? 'glitter' : 'spark';
+
         particlesRef.current.push({
           x,
           y,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
-          size: Math.random() * 5 + 3,
-          color: colors[Math.floor(Math.random() * colors.length)],
+          size: Math.random() * 8 + 4,
+          color: stardustColors[Math.floor(Math.random() * stardustColors.length)],
           alpha: 1,
           life: 0,
-          maxLife: Math.random() * 25 + 20,
+          maxLife: Math.random() * 30 + 25,
           rotation: Math.random() * 360,
-          rotSpeed: (Math.random() - 0.5) * 12,
-          type: i % 3 === 0 ? 'star' : i % 3 === 1 ? 'spark' : 'circle',
+          rotSpeed: (Math.random() - 0.5) * 16,
+          points: i % 2 === 0 ? 4 : 5,
+          twinkleSpeed: Math.random() * 0.3 + 0.1,
+          type: pType,
         });
       }
     };
@@ -104,15 +121,15 @@ export const ClickEffectCanvas: React.FC = () => {
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          // Update & Draw Click Ripples
-          const ripples = ripplesRef.current;
-          for (let i = ripples.length - 1; i >= 0; i--) {
-            const r = ripples[i];
-            r.radius += (r.maxRadius - r.radius) * 0.18 + 0.5;
-            r.alpha -= 0.035;
+          // Render Cosmic Rings
+          const rings = ringsRef.current;
+          for (let i = rings.length - 1; i >= 0; i--) {
+            const r = rings[i];
+            r.radius += (r.maxRadius - r.radius) * 0.16 + 0.5;
+            r.alpha -= 0.03;
 
             if (r.alpha <= 0 || r.radius >= r.maxRadius) {
-              ripples.splice(i, 1);
+              rings.splice(i, 1);
               continue;
             }
 
@@ -120,26 +137,30 @@ export const ClickEffectCanvas: React.FC = () => {
             ctx.globalAlpha = Math.max(0, r.alpha);
             ctx.beginPath();
             ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-            ctx.lineWidth = 3;
+            ctx.lineWidth = 2.5;
             ctx.strokeStyle = r.color;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 12;
             ctx.shadowColor = r.color;
             ctx.stroke();
             ctx.restore();
           }
 
-          // Update & Draw Particles
+          // Render Stardust Particles
           const particles = particlesRef.current;
           for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
             p.life += 1;
             p.x += p.vx;
             p.y += p.vy;
-            p.vx *= 0.94; // friction
-            p.vy *= 0.94;
-            p.vy += 0.15; // gravity
+            p.vx *= 0.93; // friction
+            p.vy *= 0.93;
+            p.vy += 0.08; // light gravity drift
             p.rotation += p.rotSpeed;
-            p.alpha = 1 - p.life / p.maxLife;
+
+            // Twinkle effect
+            const fade = 1 - p.life / p.maxLife;
+            const twinkle = 0.7 + 0.3 * Math.sin(p.life * p.twinkleSpeed);
+            p.alpha = Math.max(0, fade * twinkle);
 
             if (p.life >= p.maxLife || p.alpha <= 0) {
               particles.splice(i, 1);
@@ -147,30 +168,52 @@ export const ClickEffectCanvas: React.FC = () => {
             }
 
             ctx.save();
-            ctx.globalAlpha = Math.max(0, p.alpha);
+            ctx.globalAlpha = p.alpha;
             ctx.fillStyle = p.color;
-            ctx.shadowBlur = 8;
+            ctx.strokeStyle = p.color;
+            ctx.shadowBlur = 12;
             ctx.shadowColor = p.color;
 
-            if (p.type === 'star') {
+            if (p.type === 'star4' || p.type === 'star5') {
+              // Draw Multi-pointed Star Particle (สะเก็ดดาว)
               ctx.translate(p.x, p.y);
               ctx.rotate((p.rotation * Math.PI) / 180);
+              const numPoints = p.points;
+              const outerRadius = p.size;
+              const innerRadius = p.size * 0.35;
+
               ctx.beginPath();
-              for (let s = 0; s < 4; s++) {
-                ctx.lineTo(
-                  Math.cos((s * 90 * Math.PI) / 180) * p.size,
-                  Math.sin((s * 90 * Math.PI) / 180) * p.size
-                );
-                ctx.lineTo(
-                  Math.cos(((s * 90 + 45) * Math.PI) / 180) * (p.size * 0.35),
-                  Math.sin(((s * 90 + 45) * Math.PI) / 180) * (p.size * 0.35)
-                );
+              for (let pt = 0; pt < numPoints * 2; pt++) {
+                const r = pt % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (pt * Math.PI) / numPoints;
+                ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
               }
               ctx.closePath();
               ctx.fill();
-            } else {
+
+              // Center bright core dot
+              ctx.fillStyle = '#FFFFFF';
               ctx.beginPath();
-              ctx.arc(p.x, p.y, Math.max(0.5, p.size * (1 - p.life / p.maxLife)), 0, Math.PI * 2);
+              ctx.arc(0, 0, p.size * 0.2, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (p.type === 'glitter') {
+              // Draw 4-ray Star Burst Cross
+              ctx.translate(p.x, p.y);
+              ctx.rotate((p.rotation * Math.PI) / 180);
+              const s = p.size * 1.2;
+
+              ctx.beginPath();
+              ctx.moveTo(-s, 0);
+              ctx.quadraticCurveTo(0, 0, 0, -s);
+              ctx.quadraticCurveTo(0, 0, s, 0);
+              ctx.quadraticCurveTo(0, 0, 0, s);
+              ctx.quadraticCurveTo(0, 0, -s, 0);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              // Sparkle Circle Dust
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, Math.max(0.5, p.size * fade), 0, Math.PI * 2);
               ctx.fill();
             }
 
