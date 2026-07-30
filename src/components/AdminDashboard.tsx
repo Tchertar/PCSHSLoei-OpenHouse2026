@@ -1466,15 +1466,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Admin Add Modal */}
       {showAdminModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md">
-          <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-md my-auto bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xl text-slate-900 max-h-[92vh] overflow-y-auto">
             <button
               onClick={() => setShowAdminModal(false)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100"
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100 z-10"
             >
               <X className="w-5 h-5" />
             </button>
-            <h4 className="text-lg font-bold text-slate-900 mb-4">
+            <h4 className="text-lg font-bold text-slate-900 mb-4 pr-8">
               {editingAdminId ? 'แก้ไขข้อมูลผู้ดูแลระบบ (Admin)' : 'เพิ่มผู้ดูแลระบบ (Admin) ใหม่'}
             </h4>
             <form onSubmit={handleSaveAdmin} className="space-y-4 text-xs">
@@ -1486,7 +1486,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={adminFormData.username}
                   onChange={(e) => setAdminFormData({ ...adminFormData, username: e.target.value })}
                   placeholder="เช่น admin04"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
@@ -1497,7 +1497,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={adminFormData.name}
                   onChange={(e) => setAdminFormData({ ...adminFormData, name: e.target.value })}
                   placeholder="เช่น ครูสมชาย ใจดี"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
@@ -1508,7 +1508,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={adminFormData.email}
                   onChange={(e) => setAdminFormData({ ...adminFormData, email: e.target.value })}
                   placeholder="admin04@pcshsloei.ac.th"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
               <div>
@@ -1516,7 +1516,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={adminFormData.role}
                   onChange={(e) => setAdminFormData({ ...adminFormData, role: e.target.value as AdminRole })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500 font-medium"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500 font-medium"
                 >
                   <option value="admin">admin (ผู้ดูแลระบบทั่วไป / สแกนเช็คอิน)</option>
                   <option value="super_admin">super_admin (ผู้ดูแลระบบสูงสุด)</option>
@@ -1535,8 +1535,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Activity Add/Edit Modal */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-xl my-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xl text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-xl my-auto bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xl text-slate-900 max-h-[92vh] overflow-y-auto">
             <button
               onClick={() => setShowActivityModal(false)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100"
@@ -1674,8 +1674,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Super Admin Password Verification Modal for Deleting Attendee */}
       {deletingAttendee && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
-          <div className="relative w-full max-w-md bg-white border border-red-200 rounded-3xl p-6 shadow-2xl text-slate-900 animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-md my-auto bg-white border border-red-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-900 max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in duration-200">
             <button
               onClick={() => setDeletingAttendee(null)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 transition-colors cursor-pointer"

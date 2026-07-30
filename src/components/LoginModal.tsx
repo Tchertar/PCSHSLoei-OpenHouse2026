@@ -102,11 +102,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
-      <div className="relative w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl text-slate-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-md my-auto bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl text-slate-900 max-h-[92vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 transition-colors cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>
@@ -159,7 +159,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="เช่น admin หรือ admin01"
-                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-orange-500 shadow-sm"
+                className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 placeholder-slate-400 text-base sm:text-sm focus:outline-none focus:border-orange-500 shadow-sm"
               />
             </div>
 
@@ -174,7 +174,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500 shadow-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500 shadow-sm"
                 />
                 <button
                   type="button"
@@ -209,7 +209,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
                   placeholder="เช่น user@gmail.com หรือ PCSHS2026-XXXX"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-blue-500 shadow-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-blue-500 shadow-sm"
                 />
               </div>
             </div>
@@ -227,7 +227,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   value={userPassword}
                   onChange={(e) => setUserPassword(e.target.value)}
                   placeholder="กรอกรหัสผ่านที่ตั้งไว้ตอนลงทะเบียน"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-blue-500 shadow-sm"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-blue-500 shadow-sm"
                 />
                 <button
                   type="button"

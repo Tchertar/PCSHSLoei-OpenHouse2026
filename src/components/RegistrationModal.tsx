@@ -303,29 +303,29 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl my-8 bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden text-slate-900">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+      <div className="relative w-full max-w-2xl my-auto sm:my-8 bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden text-slate-900 flex flex-col max-h-[94vh] sm:max-h-[90vh]">
         
         {/* Header */}
-        <div className="relative bg-slate-900 p-6 border-b border-slate-800 text-white">
+        <div className="shrink-0 relative bg-slate-900 p-4 sm:p-6 border-b border-slate-800 text-white">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+            className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400">
-              <Sparkles className="w-6 h-6" />
+          <div className="flex items-center gap-3 pr-8 sm:pr-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400 shrink-0">
+              <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-2xl font-bold text-white">
+              <h3 className="text-base sm:text-2xl font-bold text-white leading-tight">
                 {step === 'form'
                   ? 'ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026'
                   : 'ยืนยันตัวตนด้วยรหัส OTP (Email Verification)'}
               </h3>
-              <p className="text-xs sm:text-sm text-blue-300">
+              <p className="text-[11px] sm:text-sm text-blue-300 mt-0.5">
                 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (28 สิงหาคม 2569)
               </p>
             </div>
@@ -333,10 +333,10 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           {step === 'form' ? (
             /* STEP 1: Registration Form with Email & Password */
-            <form onSubmit={handleFormSubmit} className="space-y-4 text-left">
+            <form onSubmit={handleFormSubmit} className="space-y-3.5 sm:space-y-4 text-left">
               {formError && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
                   {formError}
@@ -344,7 +344,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               )}
 
               {/* Personal Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     ชื่อจริง <span className="text-red-500">*</span>
@@ -355,7 +355,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     placeholder="เช่น สมชาย"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
@@ -369,14 +369,14 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     placeholder="เช่น ใจดี"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   />
                 </div>
               </div>
 
               {/* Email Input */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex flex-wrap items-center justify-between gap-1">
                   <span>อีเมลประจำตัว (Email Address) <span className="text-red-500">*</span></span>
                   <span className="text-[11px] text-slate-500 font-normal">จะใช้สำหรับเข้าสู่ระบบและรับรหัส OTP</span>
                 </label>
@@ -390,13 +390,13 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="เช่น example@gmail.com"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
                   />
                 </div>
               </div>
 
               {/* Password & Confirm Password with Eye Toggle */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     สร้างรหัสผ่าน (Password) <span className="text-red-500">*</span>
@@ -412,7 +412,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       placeholder="กำหนดรหัสผ่าน (6 ตัวขึ้นไป)"
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
                     />
                     <button
                       type="button"
@@ -439,7 +439,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                       value={formData.confirmPassword}
                       onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                       placeholder="ยืนยันรหัสผ่านอีกครั้ง"
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm font-medium"
+                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
                     />
                     <button
                       type="button"
@@ -453,7 +453,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               </div>
 
               {/* Phone & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
@@ -464,7 +464,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="เช่น 0812345678"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
@@ -475,7 +475,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as AttendeeStatus })}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   >
                     <option value="นักเรียน">นักเรียน</option>
                     <option value="ครู/อาจารย์">ครู / อาจารย์</option>
@@ -496,12 +496,12 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   value={formData.organization}
                   onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
                   placeholder="เช่น โรงเรียนเลยพิทยาคม หรือ บุคคลทั่วไป"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                 />
               </div>
 
               {/* District & Province */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     ชื่ออำเภอ <span className="text-red-500">*</span>
@@ -512,7 +512,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     value={formData.district}
                     onChange={(e) => setFormData({ ...formData, district: e.target.value })}
                     placeholder="เช่น เมืองเลย, เชียงคาน"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
@@ -523,7 +523,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                   <select
                     value={formData.province}
                     onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   >
                     {THAI_PROVINCES.map((p) => (
                       <option key={p} value={p}>
@@ -535,7 +535,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               </div>
 
               {/* Attendee Count & Transport */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     จำนวนผู้เข้าร่วม (คน) <span className="text-red-500">*</span>
@@ -549,7 +549,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })
                     }
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   />
                 </div>
 
@@ -562,7 +562,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })
                     }
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none shadow-sm"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                   >
                     <option value="รถส่วนตัว">รถส่วนตัว</option>
                     <option value="รถบัสโรงเรียน">รถบัสโรงเรียน</option>
@@ -574,18 +574,18 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+              <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 sticky bottom-0 bg-white py-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition-colors cursor-pointer"
+                  className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition-colors cursor-pointer text-center"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-2"
+                  className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
