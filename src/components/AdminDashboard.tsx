@@ -541,7 +541,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         totalRounds: 3,
         coordinator: '',
         phone: '',
-        registerUrl: 'https://forms.gle/pcshsloei-activity',
+        registerUrl: '',
         location: 'อาคารวิทยาศาสตร์',
         timeSlot: '09:00 - 15:30 น.',
       });
@@ -551,30 +551,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleSaveActivity = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activityFormData.code || !activityFormData.titleTh || !activityFormData.coordinator) return;
+
+    const code = activityFormData.code?.trim() || `ACT-${Math.floor(100 + Math.random() * 900)}`;
+    const titleTh = activityFormData.titleTh?.trim() || 'กิจกรรมทั่วไป';
+    const department = activityFormData.department?.trim() || 'ฝ่ายวิชาการ';
+    const titleEn = activityFormData.titleEn?.trim() || '';
+    const targetGrade = activityFormData.targetGrade?.trim() || 'ม.1 - ม.6';
+    const maxPerRound = Number(activityFormData.maxPerRound) || 30;
+    const totalRounds = Number(activityFormData.totalRounds) || 1;
+    const coordinator = activityFormData.coordinator?.trim() || '-';
+    const phone = activityFormData.phone?.trim() || '-';
+    const registerUrl = activityFormData.registerUrl?.trim() || '';
+    const location = activityFormData.location?.trim() || 'อาคารปฏิบัติการ';
+    const timeSlot = activityFormData.timeSlot?.trim() || '09:00 - 15:30 น.';
+
+    const finalActivity: ActivityItem = {
+      id: editingActivityId || `act-${Date.now()}`,
+      code,
+      department,
+      titleTh,
+      titleEn,
+      targetGrade,
+      maxPerRound,
+      totalRounds,
+      coordinator,
+      phone,
+      registerUrl,
+      location,
+      timeSlot,
+    };
 
     if (editingActivityId) {
-      // Edit existing
-      let updatedAct: ActivityItem | null = null;
-      const updated = activities.map((act) => {
-        if (act.id === editingActivityId) {
-          updatedAct = { ...act, ...activityFormData };
-          return updatedAct;
-        }
-        return act;
-      });
+      const updated = activities.map((act) => (act.id === editingActivityId ? finalActivity : act));
       setActivities(updated);
-      if (updatedAct) saveActivityToFirestore(updatedAct);
-      addAuditLog('แก้ไขกิจกรรม', `แก้ไขข้อมูลกิจกรรม ${activityFormData.code} (${activityFormData.titleTh})`);
+      saveActivityToFirestore(finalActivity);
+      addAuditLog('แก้ไขกิจกรรม', `แก้ไขข้อมูลกิจกรรม ${code} (${titleTh})`);
     } else {
-      // Add new
-      const newAct: ActivityItem = {
-        id: `act-${Date.now()}`,
-        ...activityFormData,
-      };
-      setActivities([...activities, newAct]);
-      saveActivityToFirestore(newAct);
-      addAuditLog('เพิ่มกิจกรรมใหม่', `เพิ่มกิจกรรม ${newAct.code} (${newAct.titleTh})`);
+      setActivities([...activities, finalActivity]);
+      saveActivityToFirestore(finalActivity);
+      addAuditLog('เพิ่มกิจกรรมใหม่', `เพิ่มกิจกรรม ${code} (${titleTh})`);
     }
 
     setShowActivityModal(false);
@@ -2051,16 +2066,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-            <h4 className="text-lg font-bold text-slate-900 mb-4">
+            <h4 className="text-lg font-bold text-slate-900 mb-1">
               {editingActivityId ? 'แก้ไขข้อมูลกิจกรรม' : 'เพิ่มกิจกรรมภายในงานใหม่'}
             </h4>
+            <p className="text-xs text-slate-500 mb-4">(สามารถเว้นว่างช่องที่ไม่ต้องการใส่ข้อมูลได้)</p>
             <form onSubmit={handleSaveActivity} className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">รหัสกิจกรรม</label>
                   <input
                     type="text"
-                    required
                     value={activityFormData.code}
                     onChange={(e) => setActivityFormData({ ...activityFormData, code: e.target.value })}
                     placeholder="SCI-PHYS-01"
@@ -2071,7 +2086,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">ฝ่ายงาน/สาขา</label>
                   <input
                     type="text"
-                    required
                     value={activityFormData.department}
                     onChange={(e) => setActivityFormData({ ...activityFormData, department: e.target.value })}
                     placeholder="สาขาฟิสิกส์"
@@ -2084,9 +2098,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">ชื่อกิจกรรม (ภาษาไทย)</label>
                 <input
                   type="text"
-                  required
                   value={activityFormData.titleTh}
                   onChange={(e) => setActivityFormData({ ...activityFormData, titleTh: e.target.value })}
+                  placeholder="เช่น การแข่งขันทดลองทางฟิสิกส์"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
@@ -2095,9 +2109,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-slate-700 font-semibold mb-1">ชื่อกิจกรรม (ภาษาอังกฤษ)</label>
                 <input
                   type="text"
-                  required
                   value={activityFormData.titleEn}
                   onChange={(e) => setActivityFormData({ ...activityFormData, titleEn: e.target.value })}
+                  placeholder="เช่น Physics Competition"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
@@ -2107,9 +2121,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">ระดับชั้นที่เข้าร่วม</label>
                   <input
                     type="text"
-                    required
                     value={activityFormData.targetGrade}
                     onChange={(e) => setActivityFormData({ ...activityFormData, targetGrade: e.target.value })}
+                    placeholder="ม.1 - ม.6"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -2117,9 +2131,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">รองรับต่อรอบ (คน)</label>
                   <input
                     type="number"
-                    required
                     value={activityFormData.maxPerRound}
                     onChange={(e) => setActivityFormData({ ...activityFormData, maxPerRound: Number(e.target.value) })}
+                    placeholder="30"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -2127,9 +2141,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">จำนวนรอบ</label>
                   <input
                     type="number"
-                    required
                     value={activityFormData.totalRounds}
                     onChange={(e) => setActivityFormData({ ...activityFormData, totalRounds: Number(e.target.value) })}
+                    placeholder="3"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -2140,9 +2154,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">ครูผู้ประสานงาน</label>
                   <input
                     type="text"
-                    required
                     value={activityFormData.coordinator}
                     onChange={(e) => setActivityFormData({ ...activityFormData, coordinator: e.target.value })}
+                    placeholder="เช่น ครูสมชาย ใจดี"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
@@ -2150,21 +2164,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-slate-700 font-semibold mb-1">เบอร์โทรศัพท์</label>
                   <input
                     type="text"
-                    required
                     value={activityFormData.phone}
                     onChange={(e) => setActivityFormData({ ...activityFormData, phone: e.target.value })}
+                    placeholder="0812345678"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">ลิงก์แบบฟอร์มลงทะเบียนการแข่งขัน</label>
+                <label className="block text-slate-700 font-semibold mb-1">ลิงก์แบบฟอร์มลงทะเบียนการแข่งขัน (ถ้ามี)</label>
                 <input
-                  type="url"
-                  required
+                  type="text"
                   value={activityFormData.registerUrl}
                   onChange={(e) => setActivityFormData({ ...activityFormData, registerUrl: e.target.value })}
+                  placeholder="https://... (หากไม่มีปุ่มลงทะเบียนให้เว้นว่างไว้)"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                 />
               </div>
