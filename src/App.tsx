@@ -31,6 +31,8 @@ import {
   subscribeAttendees,
   saveAttendeeToFirestore,
   subscribeAdmins,
+  saveAdminToFirestore,
+  saveAllAdminsToFirestore,
   subscribeActivities,
   subscribeAuditLogs,
   saveAuditLogToFirestore,
@@ -38,6 +40,45 @@ import {
 } from './lib/firebase';
 
 import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield } from 'lucide-react';
+
+const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
+  {
+    id: 'adm-super',
+    username: 'admin',
+    name: 'Super Admin System',
+    email: 'superadmin@pcshsloei.ac.th',
+    role: 'super_admin',
+    password: 'admin123',
+    createdAt: '2026-07-01 08:00:00',
+  },
+  {
+    id: 'adm-01',
+    username: 'admin01',
+    name: 'ครูสมชาย วิชาการ (Admin 01)',
+    email: 'admin01@pcshsloei.ac.th',
+    role: 'admin',
+    password: '12345678',
+    createdAt: '2026-07-02 09:30:00',
+  },
+  {
+    id: 'adm-02',
+    username: 'admin02',
+    name: 'ครูพิมลวรรณ ไอที (Admin 02)',
+    email: 'admin02@pcshsloei.ac.th',
+    role: 'admin',
+    password: '12345678',
+    createdAt: '2026-07-02 10:15:00',
+  },
+  {
+    id: 'adm-03',
+    username: 'admin03',
+    name: 'ครูธีรเดช กิจกรรม (Admin 03)',
+    email: 'admin03@pcshsloei.ac.th',
+    role: 'admin',
+    password: '12345678',
+    createdAt: '2026-07-03 11:00:00',
+  },
+];
 
 export default function App() {
   // Application Global State with Firebase Firestore Realtime Data
@@ -73,7 +114,12 @@ export default function App() {
     });
 
     const unsubAdmins = subscribeAdmins((firestoreData) => {
-      setAdmins(firestoreData || []);
+      if (firestoreData && firestoreData.length > 0) {
+        setAdmins(firestoreData);
+      } else {
+        setAdmins(DEFAULT_SYSTEM_ADMINS);
+        saveAllAdminsToFirestore(DEFAULT_SYSTEM_ADMINS);
+      }
     });
 
     const unsubActivities = subscribeActivities((firestoreData) => {
