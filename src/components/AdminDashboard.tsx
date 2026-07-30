@@ -54,7 +54,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { CameraScanner } from './CameraScanner';
 
 interface AdminDashboardProps {
   currentAdmin: AdminUser;
@@ -1174,6 +1174,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Live Device Camera Scanner Component */}
+              <CameraScanner
+                onScanSuccess={(decodedText) => handleCheckIn(decodedText)}
+                scannerMessage={scannerMessage}
+              />
 
 
             </div>
