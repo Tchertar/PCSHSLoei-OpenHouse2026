@@ -42,39 +42,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     e.preventDefault();
     setError('');
 
-    const trimmedUser = username.trim();
+    const trimmedUser = username.trim().toLowerCase();
     const trimmedPass = password.trim();
 
-    if (trimmedUser === 'admin' && trimmedPass === 'admin123') {
-      const superAdmin = adminsList.find((a) => a.username === 'admin') || {
-        id: 'adm-super',
-        username: 'admin',
-        name: 'Super Admin System',
-        email: 'superadmin@pcshsloei.ac.th',
-        role: 'super_admin',
-        createdAt: new Date().toISOString(),
-      };
-      onAdminLoginSuccess(superAdmin);
-      return;
-    }
+    // Authenticate dynamically against Firebase Firestore admins list
+    const matchedAdmin = adminsList.find(
+      (a) =>
+        a.username.toLowerCase() === trimmedUser ||
+        a.email.toLowerCase() === trimmedUser
+    );
 
-    if (
-      ['admin01', 'admin02', 'admin03'].includes(trimmedUser) &&
-      trimmedPass === '12345678'
-    ) {
-      const matchedAdmin = adminsList.find((a) => a.username === trimmedUser) || {
-        id: `adm-${trimmedUser}`,
-        username: trimmedUser,
-        name: `ผู้ดูแลระบบ (${trimmedUser})`,
-        email: `${trimmedUser}@pcshsloei.ac.th`,
-        role: 'admin',
-        createdAt: new Date().toISOString(),
-      };
+    if (matchedAdmin) {
+      // Check password stored in Firebase Firestore
+      if (matchedAdmin.password && matchedAdmin.password !== trimmedPass) {
+        setError('รหัสผ่าน Admin ไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
+        return;
+      }
+
       onAdminLoginSuccess(matchedAdmin);
       return;
     }
 
-    setError('ชื่อผู้ใช้งานหรือรหัสผ่าน Admin ไม่ถูกต้อง');
+    setError('ไม่พบชื่อผู้ใช้งาน Admin นี้ในระบบฐานข้อมูล Firebase');
   };
 
   const handleUserSubmit = (e: React.FormEvent) => {
@@ -90,14 +79,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     );
 
     if (found) {
-      // Check password if configured
+      // Check password stored in Firebase Firestore
       if (found.password && userPassword && found.password !== userPassword.trim()) {
         setError('รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง');
         return;
       }
       onAttendeeLoginSuccess(found);
     } else {
-      setError('ไม่พบข้อมูลบัญชีอีเมลหรือรหัสประจำตัวนี้ในระบบ');
+      setError('ไม่พบข้อมูลบัญชีอีเมลหรือรหัสประจำตัวนี้ในระบบฐานข้อมูล Firebase');
     }
   };
 

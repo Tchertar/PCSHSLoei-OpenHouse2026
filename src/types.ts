@@ -33,6 +33,7 @@ export interface AdminUser {
   name: string;
   email: string;
   role: AdminRole;
+  password?: string;
   createdAt: string;
 }
 

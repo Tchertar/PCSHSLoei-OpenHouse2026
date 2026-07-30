@@ -1,10 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityItem, AdminUser, Attendee, AuditLog, ScheduleItem } from './types';
 import {
-  INITIAL_ACTIVITIES,
-  INITIAL_ADMINS,
-  INITIAL_ATTENDEES,
-  INITIAL_AUDIT_LOGS,
   FAQ_LIST,
   NEWS_LIST,
   SCHEDULE_LIST,
@@ -34,66 +30,65 @@ import { GoogleUserProfile, logoutGoogleUser } from './lib/googleAuth';
 import {
   subscribeAttendees,
   saveAttendeeToFirestore,
-  saveAllAttendeesToFirestore,
   subscribeAdmins,
-  saveAllAdminsToFirestore,
   subscribeActivities,
-  saveAllActivitiesToFirestore,
   subscribeAuditLogs,
   saveAuditLogToFirestore,
-  saveAllAuditLogsToFirestore,
   subscribeSchedules,
-  saveAllSchedulesToFirestore,
 } from './lib/firebase';
 
 import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield } from 'lucide-react';
 
 export default function App() {
-  // Application Global State with Firebase Firestore & LocalStorage Backup
+  // Application Global State with Firebase Firestore Realtime Data
   const [attendees, setAttendees] = useState<Attendee[]>(() => {
     const saved = localStorage.getItem('pcshs_attendees');
-    return saved ? JSON.parse(saved) : INITIAL_ATTENDEES;
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [admins, setAdmins] = useState<AdminUser[]>(() => {
+    const saved = localStorage.getItem('pcshs_admins');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [activities, setActivities] = useState<ActivityItem[]>(() => {
+    const saved = localStorage.getItem('pcshs_activities');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
+    const saved = localStorage.getItem('pcshs_schedules');
+    return saved ? JSON.parse(saved) : SCHEDULE_LIST;
+  });
+
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    const saved = localStorage.getItem('pcshs_audit_logs');
+    return saved ? JSON.parse(saved) : [];
   });
 
   // Subscribe to real-time Firebase Firestore database
   useEffect(() => {
     const unsubAttendees = subscribeAttendees((firestoreData) => {
-      if (firestoreData && firestoreData.length > 0) {
-        setAttendees(firestoreData);
-      } else {
-        saveAllAttendeesToFirestore(INITIAL_ATTENDEES);
-      }
+      setAttendees(firestoreData || []);
     });
 
     const unsubAdmins = subscribeAdmins((firestoreData) => {
-      if (firestoreData && firestoreData.length > 0) {
-        setAdmins(firestoreData);
-      } else {
-        saveAllAdminsToFirestore(INITIAL_ADMINS);
-      }
+      setAdmins(firestoreData || []);
     });
 
     const unsubActivities = subscribeActivities((firestoreData) => {
-      if (firestoreData && firestoreData.length > 0) {
-        setActivities(firestoreData);
-      } else {
-        saveAllActivitiesToFirestore(INITIAL_ACTIVITIES);
-      }
+      setActivities(firestoreData || []);
     });
 
     const unsubAuditLogs = subscribeAuditLogs((firestoreData) => {
-      if (firestoreData && firestoreData.length > 0) {
-        setAuditLogs(firestoreData);
-      } else {
-        saveAllAuditLogsToFirestore(INITIAL_AUDIT_LOGS);
-      }
+      setAuditLogs(firestoreData || []);
     });
 
     const unsubSchedules = subscribeSchedules((firestoreData) => {
       if (firestoreData && firestoreData.length > 0) {
         setSchedules(firestoreData);
       } else {
-        saveAllSchedulesToFirestore(SCHEDULE_LIST);
+        setSchedules(SCHEDULE_LIST);
       }
     });
 
@@ -105,26 +100,6 @@ export default function App() {
       unsubSchedules();
     };
   }, []);
-
-  const [admins, setAdmins] = useState<AdminUser[]>(() => {
-    const saved = localStorage.getItem('pcshs_admins');
-    return saved ? JSON.parse(saved) : INITIAL_ADMINS;
-  });
-
-  const [activities, setActivities] = useState<ActivityItem[]>(() => {
-    const saved = localStorage.getItem('pcshs_activities');
-    return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
-  });
-
-  const [schedules, setSchedules] = useState<ScheduleItem[]>(() => {
-    const saved = localStorage.getItem('pcshs_schedules');
-    return saved ? JSON.parse(saved) : SCHEDULE_LIST;
-  });
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    const saved = localStorage.getItem('pcshs_audit_logs');
-    return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
-  });
 
   // Session State
   const [currentAttendee, setCurrentAttendee] = useState<Attendee | null>(() => {

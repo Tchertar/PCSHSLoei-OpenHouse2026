@@ -151,12 +151,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Admin Modal state
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+  const [showAdminFormPassword, setShowAdminFormPassword] = useState(false);
   const [adminFormData, setAdminFormData] = useState<{
     username: string;
     name: string;
     email: string;
     role: AdminRole;
-  }>({ username: '', name: '', email: '', role: 'admin' });
+    password: string;
+  }>({ username: '', name: '', email: '', role: 'admin', password: '' });
 
   // Activity Modal state
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -380,11 +382,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!deletingAttendee) return;
 
     const pwd = superAdminPasswordInput.trim();
-    // Validate password against super admin credentials ('admin123', 'superadmin', or current super admin password)
+    // Validate password against super admin credentials stored in Firebase Firestore
+    const superAdminAcc = admins.find((a) => a.role === 'super_admin' || a.username === 'admin');
     const isSuperAdminPassword =
-      pwd === 'admin123' ||
-      pwd === 'superadmin' ||
-      (currentAdmin && currentAdmin.role === 'super_admin' && currentAdmin.password && pwd === currentAdmin.password);
+      (superAdminAcc && superAdminAcc.password && pwd === superAdminAcc.password) ||
+      (currentAdmin && currentAdmin.role === 'super_admin' && currentAdmin.password && pwd === currentAdmin.password) ||
+      (superAdminAcc ? pwd === superAdminAcc.password : pwd === 'admin123');
 
     if (!isSuperAdminPassword) {
       setSuperAdminPasswordError('รหัสผ่าน Super Admin ไม่ถูกต้อง กรุณาตรวจสอบและลองใหม่อีกครั้ง');
@@ -414,6 +417,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Open Admin Modal for Add/Edit
   const handleOpenAdminModal = (adm?: AdminUser) => {
+    setShowAdminFormPassword(false);
     if (adm) {
       setEditingAdminId(adm.id);
       setAdminFormData({
@@ -421,6 +425,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         name: adm.name,
         email: adm.email,
         role: adm.role,
+        password: adm.password || (adm.role === 'super_admin' ? 'admin123' : '12345678'),
       });
     } else {
       setEditingAdminId(null);
@@ -429,6 +434,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         name: '',
         email: '',
         role: 'admin',
+        password: '12345678',
       });
     }
     setShowAdminModal(true);
@@ -449,6 +455,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             name: adminFormData.name.trim(),
             email: adminFormData.email.trim(),
             role: adminFormData.role,
+            password: adminFormData.password.trim() || a.password || '12345678',
           };
           return updatedAdminItem;
         }
@@ -460,7 +467,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
       addAuditLog(
         'แก้ไขข้อมูล Admin',
-        `ปรับปรุงข้อมูลแอดมิน (${adminFormData.username} - ${adminFormData.name}, บทบาท: ${adminFormData.role})`
+        `ปรับปรุงข้อมูลแอดมินและรหัสผ่านใน Firebase (${adminFormData.username} - ${adminFormData.name}, บทบาท: ${adminFormData.role})`
       );
     } else {
       const newAdmin: AdminUser = {
@@ -469,17 +476,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         name: adminFormData.name.trim(),
         email: adminFormData.email.trim(),
         role: adminFormData.role,
+        password: adminFormData.password.trim() || '12345678',
         createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
       };
 
       setAdmins([...admins, newAdmin]);
       saveAdminToFirestore(newAdmin);
-      addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่ (${newAdmin.username} - ${newAdmin.name})`);
+      addAuditLog('เพิ่ม Admin', `เพิ่มแอดมินใหม่พร้อมรหัสผ่านสู่ Firebase (${newAdmin.username} - ${newAdmin.name})`);
     }
 
     setShowAdminModal(false);
     setEditingAdminId(null);
-    setAdminFormData({ username: '', name: '', email: '', role: 'admin' });
+    setAdminFormData({ username: '', name: '', email: '', role: 'admin', password: '' });
   };
 
   const handleDeleteAdmin = (id: string, username: string) => {
@@ -2009,6 +2017,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   placeholder="admin04@pcshsloei.ac.th"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500"
                 />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">รหัสผ่าน (Password สำหรับบันทึกใน Firebase)</label>
+                <div className="relative">
+                  <input
+                    type={showAdminFormPassword ? 'text' : 'password'}
+                    required
+                    value={adminFormData.password}
+                    onChange={(e) => setAdminFormData({ ...adminFormData, password: e.target.value })}
+                    placeholder="ตั้งรหัสผ่านสำหรับล็อกอิน"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-orange-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminFormPassword(!showAdminFormPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showAdminFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">บทบาทสิทธิ์การใช้งาน (Role)</label>
