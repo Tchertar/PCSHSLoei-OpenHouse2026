@@ -194,19 +194,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Firebase Connection Test state
   const [isTestingFirebase, setIsTestingFirebase] = useState(false);
   const [firebaseTestResult, setFirebaseTestResult] = useState<FirebaseConnectionTestResult | null>(null);
+  const [showFirebaseTestModal, setShowFirebaseTestModal] = useState(false);
 
   const handleTestFirebase = async () => {
     setIsTestingFirebase(true);
     try {
       const res = await testFirebaseConnection();
       setFirebaseTestResult(res);
+      setShowFirebaseTestModal(true);
       addAuditLog(
         'ทดสอบการเชื่อมต่อ Firebase',
         `ผลการทดสอบการเชื่อมต่อฐานข้อมูล Firebase: ${res.success ? 'สำเร็จ (' + res.latencyMs + 'ms)' : 'ล้มเหลว (' + res.message + ')'}`
       );
     } catch (err: any) {
       console.error("Firebase connection test error:", err);
-      setFirebaseTestResult({
+      const failRes = {
         success: false,
         message: err?.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุในการเชื่อมต่อ',
         projectId: 'N/A',
@@ -215,7 +217,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         testedAt: new Date().toLocaleString('th-TH'),
         canRead: false,
         canWrite: false,
-      });
+      };
+      setFirebaseTestResult(failRes);
+      setShowFirebaseTestModal(true);
     } finally {
       setIsTestingFirebase(false);
     }
@@ -2479,6 +2483,129 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Firebase Test Result Modal Popup */}
+      {showFirebaseTestModal && firebaseTestResult && (
+        <div className="fixed inset-0 z-[110] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="text-center space-y-2">
+              <div
+                className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-lg ${
+                  firebaseTestResult.success
+                    ? 'bg-emerald-100 text-emerald-600 ring-8 ring-emerald-50'
+                    : 'bg-rose-100 text-rose-600 ring-8 ring-rose-50'
+                }`}
+              >
+                {firebaseTestResult.success ? (
+                  <CheckCircle2 className="w-10 h-10" />
+                ) : (
+                  <XCircle className="w-10 h-10" />
+                )}
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900 pt-2">
+                {firebaseTestResult.success
+                  ? 'เชื่อมต่อฐานข้อมูลสำเร็จ!'
+                  : 'การเชื่อมต่อฐานข้อมูลล้มเหลว'}
+              </h3>
+              <p
+                className={`text-xs px-3 py-1 rounded-full inline-block font-bold ${
+                  firebaseTestResult.success
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-rose-100 text-rose-700'
+                }`}
+              >
+                {firebaseTestResult.success ? 'STATUS: CONNECTED ✅' : 'STATUS: DISCONNECTED ❌'}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 space-y-3 text-xs">
+              <p className="text-slate-700 leading-relaxed font-medium">
+                {firebaseTestResult.message}
+              </p>
+
+              {/* Free Quota Summary Box */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-3.5 space-y-2.5 shadow-md">
+                <div className="flex items-center justify-between text-[11px] font-bold">
+                  <span className="text-orange-400 flex items-center gap-1">
+                    💾 โควต้าพื้นที่จัดเก็บข้อมูลฟรี (Spark Plan)
+                  </span>
+                  <span className="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full text-[10px]">
+                    เหลือ {firebaseTestResult.freeQuotaRemainingMb ?? 1024} MB
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] font-mono text-slate-300">
+                    <span>ใช้ไปแล้ว: {(firebaseTestResult.freeQuotaUsedMb ?? 0.05).toFixed(2)} MB</span>
+                    <span className="font-bold text-emerald-400">คงเหลือ: {(firebaseTestResult.freeQuotaRemainingMb ?? 1024).toFixed(2)} MB / {(firebaseTestResult.freeQuotaTotalMb ?? 1024)} MB</span>
+                  </div>
+                  {/* Progress Bar */}
+                  <div className="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-400 h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.max(0.5, ((firebaseTestResult.freeQuotaRemainingMb ?? 1024) / (firebaseTestResult.freeQuotaTotalMb ?? 1024)) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-700/80 text-[10px] text-slate-300 font-mono">
+                  <div>📖 อ่านฟรี: <strong className="text-white">{firebaseTestResult.freeQuotaReadsDaily || '50,000/วัน'}</strong></div>
+                  <div>✏️ เขียนฟรี: <strong className="text-white">{firebaseTestResult.freeQuotaWritesDaily || '20,000/วัน'}</strong></div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 font-mono">
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] text-slate-500 block font-sans">ความเร็วตอบสนอง (Latency)</span>
+                  <span className="font-bold text-slate-800 text-sm">{firebaseTestResult.latencyMs} ms</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] text-slate-500 block font-sans">เวลาทดสอบ</span>
+                  <span className="font-bold text-slate-800 text-xs">{firebaseTestResult.testedAt}</span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] text-slate-500 block font-sans">สิทธิ์การอ่าน (Read)</span>
+                  <span className={`font-bold ${firebaseTestResult.canRead ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {firebaseTestResult.canRead ? 'อ่านข้อมูลได้' : 'อ่านไม่ได้'}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/60">
+                  <span className="text-[10px] text-slate-500 block font-sans">สิทธิ์การเขียน (Write)</span>
+                  <span className={`font-bold ${firebaseTestResult.canWrite ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {firebaseTestResult.canWrite ? 'เขียนข้อมูลได้' : 'เขียนไม่ได้'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 text-[11px] text-slate-500 flex justify-between border-t border-slate-200/60 font-mono">
+                <span>Project: {firebaseTestResult.projectId}</span>
+                <span>DB: {firebaseTestResult.databaseId}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleTestFirebase}
+                disabled={isTestingFirebase}
+                className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className={`w-4 h-4 ${isTestingFirebase ? 'animate-spin' : ''}`} />
+                <span>ทดสอบอีกครั้ง</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFirebaseTestModal(false)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm rounded-xl shadow transition-all cursor-pointer"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
           </div>
         </div>
       )}

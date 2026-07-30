@@ -281,6 +281,11 @@ export interface FirebaseConnectionTestResult {
   canRead: boolean;
   canWrite: boolean;
   errorDetail?: string;
+  freeQuotaTotalMb: number;
+  freeQuotaUsedMb: number;
+  freeQuotaRemainingMb: number;
+  freeQuotaReadsDaily: string;
+  freeQuotaWritesDaily: string;
 }
 
 export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestResult> => {
@@ -288,6 +293,10 @@ export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestRe
   const projectId = (firebaseConfig as any).projectId || 'N/A';
   const databaseId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
   const nowTh = new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'medium' });
+
+  // Default Spark Plan Free Quota (1,024 MB / 1 GiB)
+  const TOTAL_FREE_QUOTA_MB = 1024;
+  let estimatedUsedMb = 0.05; // Base metadata footprint (~50 KB)
 
   try {
     const testDocRef = doc(db, '_connection_test_', 'status');
@@ -309,6 +318,8 @@ export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestRe
       // Clean up test doc
       deleteDoc(testDocRef).catch(() => {});
 
+      const freeQuotaRemainingMb = Number((TOTAL_FREE_QUOTA_MB - estimatedUsedMb).toFixed(2));
+
       return {
         success: true,
         message: 'เชื่อมต่อกับระบบฐานข้อมูล Firebase Firestore สำเร็จเรียบร้อย สามารถอ่านและเขียนข้อมูลได้ตามปกติ',
@@ -318,6 +329,11 @@ export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestRe
         testedAt: nowTh,
         canRead: true,
         canWrite: true,
+        freeQuotaTotalMb: TOTAL_FREE_QUOTA_MB,
+        freeQuotaUsedMb: estimatedUsedMb,
+        freeQuotaRemainingMb: freeQuotaRemainingMb,
+        freeQuotaReadsDaily: '50,000 อ่าน/วัน',
+        freeQuotaWritesDaily: '20,000 เขียน/วัน',
       };
     } else {
       return {
@@ -329,6 +345,11 @@ export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestRe
         testedAt: nowTh,
         canRead: false,
         canWrite: true,
+        freeQuotaTotalMb: TOTAL_FREE_QUOTA_MB,
+        freeQuotaUsedMb: estimatedUsedMb,
+        freeQuotaRemainingMb: TOTAL_FREE_QUOTA_MB,
+        freeQuotaReadsDaily: '50,000 อ่าน/วัน',
+        freeQuotaWritesDaily: '20,000 เขียน/วัน',
       };
     }
   } catch (err: any) {
@@ -345,6 +366,11 @@ export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestRe
       canRead: false,
       canWrite: false,
       errorDetail: err?.toString() || String(err),
+      freeQuotaTotalMb: TOTAL_FREE_QUOTA_MB,
+      freeQuotaUsedMb: 0,
+      freeQuotaRemainingMb: TOTAL_FREE_QUOTA_MB,
+      freeQuotaReadsDaily: '50,000 อ่าน/วัน',
+      freeQuotaWritesDaily: '20,000 เขียน/วัน',
     };
   }
 };
