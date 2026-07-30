@@ -140,15 +140,17 @@ export const ActivitiesSection: React.FC<ActivitiesSectionProps> = ({ activities
               </div>
 
               {/* Action Link Button */}
-              <a
-                href={act.registerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>ลงทะเบียนเข้าร่วมแข่งขัน</span>
-                <ExternalLink className="w-4 h-4" />
-              </a>
+              {act.registerUrl && act.registerUrl.trim() !== '' && act.registerUrl.trim() !== '-' && (
+                <a
+                  href={act.registerUrl.startsWith('http') ? act.registerUrl : `https://${act.registerUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>ลงทะเบียนเข้าร่วมแข่งขัน</span>
+                  <ExternalLink className="w-4 h-4" />
+                </a>
+              )}
             </div>
           ))}
         </div>
