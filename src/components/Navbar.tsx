@@ -132,9 +132,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={onLogout}
                   title="ออกจากระบบ"
-                  className="p-2.5 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 text-slate-700 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm hover:shadow-red-500/10 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 border border-slate-200 hover:border-red-200"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 text-slate-500" />
+                  <span>ออกจากระบบ</span>
                 </button>
               </div>
             ) : currentAttendee ? (
@@ -149,9 +150,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={onLogout}
                   title="ออกจากระบบ"
-                  className="p-2.5 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-xl border border-slate-200 cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 text-slate-700 hover:text-red-600 bg-slate-100 hover:bg-red-50 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-sm hover:shadow-red-500/10 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 border border-slate-200 hover:border-red-200"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-4 h-4 text-slate-500" />
+                  <span>ออกจากระบบ</span>
                 </button>
               </div>
             ) : (
@@ -226,9 +228,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm border border-red-200"
+                  className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold text-sm border border-red-200 flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  ออกจากระบบ
+                  <LogOut className="w-4 h-4 text-red-600" />
+                  <span>ออกจากระบบ</span>
                 </button>
               </div>
             ) : currentAttendee ? (
@@ -248,9 +251,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     setMobileMenuOpen(false);
                     onLogout();
                   }}
-                  className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl font-medium text-sm border border-red-200"
+                  className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold text-sm border border-red-200 flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  ออกจากระบบ
+                  <LogOut className="w-4 h-4 text-red-600" />
+                  <span>ออกจากระบบ</span>
                 </button>
               </div>
             ) : (

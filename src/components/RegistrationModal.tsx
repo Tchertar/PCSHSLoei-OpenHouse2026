@@ -1,15 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Attendee, AttendeeStatus, TransportMethod } from '../types';
 import {
-  ArrowRight,
-  Check,
-  CheckCircle2,
-  Copy,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
-  Mail,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -38,9 +32,6 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   existingAttendees = [],
   onRegisterSuccess,
 }) => {
-  // Steps: 'form' | 'otp'
-  const [step, setStep] = useState<'form' | 'otp'>('form');
-
   // Form State
   const [formData, setFormData] = useState({
     firstName: '',
@@ -61,19 +52,91 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // OTP State
-  const [otpCode, setOtpCode] = useState('');
-  const [sentOtp, setSentOtp] = useState<string | null>(null);
-  const [emailSentReal, setEmailSentReal] = useState<boolean>(false);
-  const [otpError, setOtpError] = useState('');
+  // CAPTCHA State
+  const [captchaCode, setCaptchaCode] = useState('');
+  const [userCaptchaInput, setUserCaptchaInput] = useState('');
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [copiedOtp, setCopiedOtp] = useState(false);
+
+  // Generate random CAPTCHA code
+  const generateCaptcha = useCallback(() => {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 5; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setCaptchaCode(code);
+    setUserCaptchaInput('');
+  }, []);
+
+  // Draw CAPTCHA on canvas
+  const drawCaptcha = useCallback((code: string, canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Canvas background
+    ctx.fillStyle = '#0f172a'; // slate-900
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Background noise dots
+    for (let i = 0; i < 35; i++) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${Math.random() * 0.25})`;
+      ctx.beginPath();
+      ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 1.5 + 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Noise line waves
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeStyle = i % 2 === 0 ? 'rgba(249, 115, 22, 0.45)' : 'rgba(56, 189, 248, 0.45)';
+      ctx.lineWidth = Math.random() * 1.5 + 1;
+      ctx.beginPath();
+      ctx.moveTo(Math.random() * 20, Math.random() * canvas.height);
+      ctx.bezierCurveTo(
+        canvas.width / 3, Math.random() * canvas.height,
+        (canvas.width * 2) / 3, Math.random() * canvas.height,
+        canvas.width - 10, Math.random() * canvas.height
+      );
+      ctx.stroke();
+    }
+
+    // Characters rendering
+    ctx.font = 'bold 22px monospace';
+    ctx.textBaseline = 'middle';
+    const charWidth = canvas.width / (code.length + 1);
+
+    for (let i = 0; i < code.length; i++) {
+      const char = code[i];
+      ctx.save();
+      const x = charWidth * (i + 1);
+      const y = canvas.height / 2 + (Math.random() * 4 - 2);
+      const angle = (Math.random() - 0.5) * 0.35;
+
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = i % 2 === 0 ? '#fb923c' : '#38bdf8'; // orange & sky blue
+      ctx.fillText(char, -8, 0);
+      ctx.restore();
+    }
+  }, []);
+
+  // Initialize CAPTCHA when modal opens or code updates
+  useEffect(() => {
+    if (isOpen) {
+      if (!captchaCode) {
+        generateCaptcha();
+      } else if (canvasRef.current) {
+        drawCaptcha(captchaCode, canvasRef.current);
+      }
+    }
+  }, [isOpen, captchaCode, generateCaptcha, drawCaptcha]);
 
   if (!isOpen) return null;
 
-  // Handle Initial Registration Form Submission
+  // Handle Registration Form Submission with CAPTCHA
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -109,6 +172,18 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       return;
     }
 
+    // Validate CAPTCHA
+    if (!userCaptchaInput.trim()) {
+      setFormError('กรุณากรอกรหัส CAPTCHA เพื่อยืนยันว่าไม่ใช่โปรแกรมอัตโนมัติ');
+      return;
+    }
+
+    if (userCaptchaInput.trim().toUpperCase() !== captchaCode.toUpperCase()) {
+      setFormError('รหัส CAPTCHA ไม่ถูกต้อง กรุณาตรวจสอบรหัสแล้วลองใหม่อีกครั้ง');
+      generateCaptcha();
+      return;
+    }
+
     // Check duplicate registration
     const normalizedEmail = formData.email.trim().toLowerCase();
     const existing = existingAttendees.find((a) => a.email.toLowerCase() === normalizedEmail);
@@ -122,129 +197,9 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       return;
     }
 
-    // Request OTP via backend API or fallback
-    setLoading(true);
-    try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, firstName: formData.firstName }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.otp) {
-        setSentOtp(data.otp);
-        setEmailSentReal(!!data.emailSentReal);
-      } else {
-        // Fallback local OTP
-        const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-        setSentOtp(fallbackCode);
-        setEmailSentReal(false);
-      }
-
-      setStep('otp');
-      startCooldown();
-    } catch (err) {
-      console.warn('API send OTP error, using fallback:', err);
-      const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setSentOtp(fallbackCode);
-      setEmailSentReal(false);
-      setStep('otp');
-      startCooldown();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startCooldown = () => {
-    setResendCooldown(60);
-    const interval = setInterval(() => {
-      setResendCooldown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  // Resend OTP
-  const handleResendOtp = async () => {
-    if (resendCooldown > 0) return;
-    setOtpError('');
-    setLoading(true);
-
-    const normalizedEmail = formData.email.trim().toLowerCase();
-    try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, firstName: formData.firstName }),
-      });
-      const data = await res.json();
-      if (data.success && data.otp) {
-        setSentOtp(data.otp);
-        setEmailSentReal(!!data.emailSentReal);
-      } else {
-        const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-        setSentOtp(newCode);
-        setEmailSentReal(false);
-      }
-      startCooldown();
-    } catch {
-      const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setSentOtp(newCode);
-      setEmailSentReal(false);
-      startCooldown();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Verify OTP Code & Save to Firebase Firestore
-  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setOtpError('');
-
-    if (!otpCode || otpCode.trim().length < 6) {
-      setOtpError('กรุณากรอกรหัสยืนยัน OTP 6 หลัก');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      const normalizedEmail = formData.email.trim().toLowerCase();
-      // Verify OTP via API backend or local comparison
-      let isVerified = false;
-      try {
-        const res = await fetch('/api/auth/verify-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: normalizedEmail, code: otpCode.trim() }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          isVerified = true;
-        }
-      } catch {
-        // Local comparison check
-        if (sentOtp && otpCode.trim() === sentOtp) {
-          isVerified = true;
-        }
-      }
-
-      if (!isVerified && sentOtp && otpCode.trim() === sentOtp) {
-        isVerified = true;
-      }
-
-      if (!isVerified) {
-        setOtpError('รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบรหัสยืนยันที่ส่งไปทางอีเมล');
-        setLoading(false);
-        return;
-      }
-
       // Generate Participant Code
       const codeNum = Math.floor(1000 + Math.random() * 9000);
       const participantCode = `PCSHS2026-${codeNum}`;
@@ -270,7 +225,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
         photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}+${encodeURIComponent(formData.lastName)}&background=0D8ABC&color=fff&bold=true`,
       };
 
-      // Save to Firebase Firestore (Database project: PCSHS-Loei-Open-House-2026-db)
+      // Save to Firebase Firestore
       await saveAttendeeToFirestore(newAttendee);
 
       // Trigger Celebration Confetti
@@ -281,7 +236,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       });
 
       alert(
-        `🎉 ลงทะเบียนและยืนยันตัวตนด้วยอีเมลสำเร็จ!\n\nข้อมูลผู้เข้าร่วมงาน ${newAttendee.firstName} ${newAttendee.lastName} ได้ถูกบันทึกลงในฐานข้อมูล Firebase (PCSHS-Loei-Open-House-2026-db) เรียบร้อยแล้ว`
+        `🎉 ลงทะเบียนเข้าร่วมงานสำเร็จ!\n\nข้อมูลผู้เข้าร่วมงาน ${newAttendee.firstName} ${newAttendee.lastName} บันทึกลงในระบบเรียบร้อยแล้ว`
       );
 
       setLoading(false);
@@ -289,16 +244,8 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Registration save error:', err);
-      setOtpError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      setFormError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
       setLoading(false);
-    }
-  };
-
-  const copyOtpToClipboard = () => {
-    if (sentOtp) {
-      navigator.clipboard.writeText(sentOtp);
-      setCopiedOtp(true);
-      setTimeout(() => setCopiedOtp(false), 2000);
     }
   };
 
@@ -314,16 +261,13 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
           >
             <X className="w-5 h-5" />
           </button>
-
           <div className="flex items-center gap-3 pr-8 sm:pr-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400 shrink-0">
               <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
               <h3 className="text-base sm:text-2xl font-bold text-white leading-tight">
-                {step === 'form'
-                  ? 'ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026'
-                  : 'ยืนยันตัวตนด้วยรหัส OTP (Email Verification)'}
+                ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026
               </h3>
               <p className="text-[11px] sm:text-sm text-blue-300 mt-0.5">
                 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (28 สิงหาคม 2569)
@@ -334,396 +278,299 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {step === 'form' ? (
-            /* STEP 1: Registration Form with Email & Password */
-            <form onSubmit={handleFormSubmit} className="space-y-3.5 sm:space-y-4 text-left">
-              {formError && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
-                  {formError}
-                </div>
-              )}
-
-              {/* Personal Name */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ชื่อจริง <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    placeholder="เช่น สมชาย"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    นามสกุล <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    placeholder="เช่น ใจดี"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
+          <form onSubmit={handleFormSubmit} className="space-y-3.5 sm:space-y-4 text-left">
+            {formError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
+                {formError}
               </div>
+            )}
 
-              {/* Email Input */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex flex-wrap items-center justify-between gap-1">
-                  <span>อีเมลประจำตัว (Email Address) <span className="text-red-500">*</span></span>
-                  <span className="text-[11px] text-slate-500 font-normal">จะใช้สำหรับเข้าสู่ระบบและรับรหัส OTP</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Mail className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="เช่น example@gmail.com"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Password & Confirm Password with Eye Toggle */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    สร้างรหัสผ่าน (Password) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      placeholder="กำหนดรหัสผ่าน (6 ตัวขึ้นไป)"
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ยืนยันรหัสผ่าน (Confirm Password) <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <KeyRound className="w-4 h-4" />
-                    </div>
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      required
-                      minLength={6}
-                      value={formData.confirmPassword}
-                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                      placeholder="ยืนยันรหัสผ่านอีกครั้ง"
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-10 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Phone & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="เช่น 0812345678"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    สถานภาพผู้เข้าร่วม <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value as AttendeeStatus })}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  >
-                    <option value="นักเรียน">นักเรียน</option>
-                    <option value="ครู/อาจารย์">ครู / อาจารย์</option>
-                    <option value="ผู้ปกครอง">ผู้ปกครอง</option>
-                    <option value="บุคคลทั่วไป">บุคคลทั่วไป</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Organization */}
+            {/* Personal Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ชื่อสถาบัน / โรงเรียน / หน่วยงาน <span className="text-red-500">*</span>
+                  ชื่อจริง <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  value={formData.organization}
-                  onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                  placeholder="เช่น โรงเรียนเลยพิทยาคม หรือ บุคคลทั่วไป"
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  placeholder="เช่น สมชาย"
                   className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                 />
               </div>
 
-              {/* District & Province */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ชื่ออำเภอ <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.district}
-                    onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                    placeholder="เช่น เมืองเลย, เชียงคาน"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    จังหวัด <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.province}
-                    onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  >
-                    {THAI_PROVINCES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Attendee Count & Transport */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    จำนวนผู้เข้าร่วม (คน) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={200}
-                    required
-                    value={formData.attendeeCount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })
-                    }
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    วิธีการเดินทาง <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.transportMethod}
-                    onChange={(e) =>
-                      setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })
-                    }
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                  >
-                    <option value="รถส่วนตัว">รถส่วนตัว</option>
-                    <option value="รถบัสโรงเรียน">รถบัสโรงเรียน</option>
-                    <option value="รถตู้สถาบัน">รถตู้สถาบัน</option>
-                    <option value="รถสาธารณะ">รถสาธารณะ</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 sticky bottom-0 bg-white py-2">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition-colors cursor-pointer text-center"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>กำลังส่งรหัสยืนยัน OTP...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>ถัดไป: ส่งรหัสยืนยันไปยัง Email</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          ) : (
-            /* STEP 2: Email OTP Verification Step */
-            <form onSubmit={handleVerifyOtpSubmit} className="space-y-6 text-left max-w-md mx-auto py-2">
-              
-              {/* Email Sent / Preview OTP Notification Banner */}
-              {emailSentReal ? (
-                <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-emerald-500/30 space-y-2 text-center">
-                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-emerald-400/30">
-                    <Mail className="w-6 h-6 text-emerald-400 animate-bounce" />
-                  </div>
-                  <h3 className="font-bold text-base text-white">
-                    ส่งรหัสยืนยัน OTP ไปยังอีเมลของคุณเรียบร้อยแล้ว
-                  </h3>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    ระบบได้ส่งรหัสยืนยัน OTP 6 หลัก ไปยังอีเมล{' '}
-                    <strong className="text-amber-300 font-mono text-sm underline">{formData.email}</strong> แล้ว<br />
-                    กรุณาเปิดเช็กใน <span className="text-white font-semibold">กล่องข้อความ (Inbox)</span> หรือ <span className="text-white font-semibold">จดหมายขยะ (Junk / Spam)</span>
-                  </p>
-                </div>
-              ) : (
-                <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 text-white rounded-2xl p-5 shadow-xl border border-amber-500/40 space-y-3 text-center">
-                  <div className="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto mb-1 border border-amber-400/30">
-                    <KeyRound className="w-6 h-6 text-amber-400 animate-pulse" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-amber-200 uppercase tracking-wide">
-                      รหัสยืนยันตัวตน OTP สำหรับลงทะเบียน
-                    </span>
-                    <h3 className="font-black text-2xl text-amber-300 font-mono tracking-widest mt-1">
-                      {sentOtp || '------'}
-                    </h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    ℹ️ ระบบยังไม่ได้ตั้งค่าบัญชี SMTP Email Server สำหรับส่งอีเมลจริง<br />
-                    ท่านสามารถนำรหัส <strong className="text-amber-300 font-mono">{sentOtp}</strong> กรอกในช่องด้านล่าง หรือกดปุ่มเติมรหัสเพื่อยืนยันตัวตนได้ทันที
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (sentOtp) setOtpCode(sentOtp);
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-900 font-black text-xs rounded-xl shadow cursor-pointer transition-transform hover:scale-105 active:scale-95 inline-flex items-center gap-1.5"
-                  >
-                    <Sparkles className="w-4 h-4 text-slate-900" />
-                    <span>⚡ คลิกเพื่อใส่รหัส {sentOtp} อัตโนมัติ</span>
-                  </button>
-                </div>
-              )}
-
-              {/* OTP Error Message */}
-              {otpError && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
-                  {otpError}
-                </div>
-              )}
-
-              {/* Input for OTP */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700 text-center">
-                  กรอกรหัสยืนยัน OTP 6 หลักที่ได้รับทางอีเมล
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  นามสกุล <span className="text-red-500">*</span>
                 </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  placeholder="เช่น ใจดี"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                />
+              </div>
+            </div>
 
-                <div className="flex justify-center">
+            {/* Email Input */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1 flex flex-wrap items-center justify-between gap-1">
+                <span>อีเมลประจำตัว (Email Address) <span className="text-red-500">*</span></span>
+                <span className="text-[11px] text-slate-500 font-normal">จะใช้สำหรับเข้าสู่ระบบดูบัตรประจำตัว</span>
+              </label>
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="เช่น example@gmail.com"
+                className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
+              />
+            </div>
+
+            {/* Password & Confirm Password */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  สร้างรหัสผ่าน (Password) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
                   <input
-                    type="text"
-                    maxLength={6}
+                    type={showPassword ? 'text' : 'password'}
                     required
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="123456"
-                    className="w-48 text-center bg-slate-50 border-2 border-orange-500 focus:border-orange-600 rounded-2xl px-4 py-3 text-2xl font-mono font-extrabold tracking-widest text-slate-900 focus:outline-none shadow-md"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="กำหนดรหัสผ่าน (6 ตัวขึ้นไป)"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
-              {/* Cooldown & Resend button */}
-              <div className="text-center space-y-1">
-                <p className="text-xs text-slate-500">
-                  ไม่ได้รับรหัสยืนยัน?{' '}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ยืนยันรหัสผ่าน (Confirm Password) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    placeholder="ยืนยันรหัสผ่านอีกครั้ง"
+                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
+                  />
                   <button
                     type="button"
-                    onClick={handleResendOtp}
-                    disabled={resendCooldown > 0 || loading}
-                    className="text-orange-600 hover:underline font-bold disabled:text-slate-400 disabled:no-underline cursor-pointer inline-flex items-center gap-1"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
-                    <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-                    <span>
-                      {resendCooldown > 0 ? `ขอรหัสใหม่ใน (${resendCooldown}s)` : 'ส่งรหัสยืนยันอีกครั้ง'}
-                    </span>
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
-                </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Phone & Status */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="เช่น 0812345678"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                />
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-2 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep('form')}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-xs sm:text-sm transition-colors cursor-pointer"
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">สถานภาพผู้ลงทะเบียน</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value as AttendeeStatus })}
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
                 >
-                  &larr; แก้ไขข้อมูล
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>กำลังยืนยันและบันทึกลง Firebase...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-5 h-5" />
-                      <span>ยืนยัน OTP และสร้างบัญชี</span>
-                    </>
-                  )}
-                </button>
+                  <option value="นักเรียน">นักเรียน</option>
+                  <option value="ครู/อาจารย์">ครู / อาจารย์</option>
+                  <option value="ผู้ปกครอง">ผู้ปกครอง</option>
+                  <option value="ศิษย์เก่า">ศิษย์เก่า</option>
+                  <option value="ประชาชนทั่วไป">ประชาชนทั่วไป</option>
+                </select>
               </div>
-            </form>
-          )}
+            </div>
+
+            {/* Organization */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                ชื่อโรงเรียน / สถาบัน / หน่วยงาน <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.organization}
+                onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
+                placeholder="เช่น โรงเรียนเลยพิทยาคม หรือ บุคคลทั่วไป"
+                className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+              />
+            </div>
+
+            {/* District & Province */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  ชื่ออำเภอ <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                  placeholder="เช่น เมืองเลย, เชียงคาน"
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">จังหวัด</label>
+                <select
+                  value={formData.province}
+                  onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                >
+                  {THAI_PROVINCES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Attendee Count & Transport */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  จำนวนผู้เข้าร่วม (คน) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  required
+                  value={formData.attendeeCount}
+                  onChange={(e) =>
+                    setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  วิธีการเดินทาง <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.transportMethod}
+                  onChange={(e) =>
+                    setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })
+                  }
+                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                >
+                  <option value="รถส่วนตัว">รถส่วนตัว</option>
+                  <option value="รถบัสโรงเรียน">รถบัสโรงเรียน</option>
+                  <option value="รถตู้สถาบัน">รถตู้สถาบัน</option>
+                  <option value="รถสาธารณะ">รถสาธารณะ</option>
+                  <option value="อื่นๆ">อื่นๆ</option>
+                </select>
+              </div>
+            </div>
+
+            {/* CAPTCHA Security Verification Field */}
+            <div className="bg-slate-900 text-white p-3.5 sm:p-4 rounded-2xl border border-slate-800 space-y-2 shadow-inner">
+              <label className="block text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>การยืนยันความปลอดภัย (CAPTCHA Verification) <span className="text-red-400">*</span></span>
+              </label>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                {/* Canvas Display & Refresh */}
+                <div className="flex items-center gap-2">
+                  <canvas
+                    ref={canvasRef}
+                    width={140}
+                    height={42}
+                    className="rounded-xl border border-slate-700 bg-slate-950 shadow-md shrink-0 cursor-pointer"
+                    onClick={generateCaptcha}
+                    title="คลิกเพื่อเปลี่ยนรหัส CAPTCHA ใหม่"
+                  />
+                  <button
+                    type="button"
+                    onClick={generateCaptcha}
+                    className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-colors cursor-pointer shrink-0"
+                    title="เปลี่ยนรหัส CAPTCHA ใหม่"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Input Text */}
+                <input
+                  type="text"
+                  required
+                  maxLength={5}
+                  value={userCaptchaInput}
+                  onChange={(e) => setUserCaptchaInput(e.target.value.toUpperCase())}
+                  placeholder="กรอกรหัส 5 หลักที่เห็น"
+                  className="flex-1 bg-slate-950 border border-slate-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-amber-300 font-mono font-black text-center tracking-widest text-base sm:text-sm focus:outline-none shadow-sm uppercase placeholder-slate-500"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                ℹ️ พิมพ์ตัวอักษรหรือตัวเลข 5 หลักตามที่ปรากฏในช่องสีเข้ม (ตัวอักษรใหญ่-เล็กเหมือนกัน)
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 sm:gap-3 sticky bottom-0 bg-white py-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition-colors cursor-pointer text-center"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>กำลังบันทึกข้อมูล...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="w-4 h-4" />
+                    <span>ยืนยันและลงทะเบียน</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

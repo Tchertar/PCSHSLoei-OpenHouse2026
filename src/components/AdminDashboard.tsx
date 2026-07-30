@@ -6,11 +6,14 @@ import {
   saveAdminToFirestore,
   deleteAdminFromFirestore,
   saveActivityToFirestore,
+  saveAllActivitiesToFirestore,
   deleteActivityFromFirestore,
   saveMapBuildingToFirestore,
   deleteMapBuildingFromFirestore,
   saveScheduleToFirestore,
   deleteScheduleFromFirestore,
+  testFirebaseConnection,
+  FirebaseConnectionTestResult,
 } from '../lib/firebase';
 import {
   Activity,
@@ -38,6 +41,16 @@ import {
   Sparkles,
   Calendar,
   Clock,
+  Upload,
+  FileUp,
+  FileSpreadsheet,
+  AlertCircle,
+  Check,
+  Database,
+  RefreshCw,
+  Server,
+  Wifi,
+  XCircle,
 } from 'lucide-react';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Html5QrcodeScanner } from 'html5-qrcode';
@@ -163,11 +176,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     timeSlot: '09:00 - 15:30 น.',
   });
 
+  // Activity CSV Import & Template State
+  const [showActivityCsvModal, setShowActivityCsvModal] = useState(false);
+  const [importedCsvActivities, setImportedCsvActivities] = useState<ActivityItem[]>([]);
+  const [csvFileName, setCsvFileName] = useState('');
+  const [csvImportMode, setCsvImportMode] = useState<'append' | 'replace'>('append');
+  const [csvParseError, setCsvParseError] = useState<string | null>(null);
+
   // Delete Attendee (Super Admin Password Required) state
   const [deletingAttendee, setDeletingAttendee] = useState<Attendee | null>(null);
   const [superAdminPasswordInput, setSuperAdminPasswordInput] = useState('');
   const [superAdminPasswordError, setSuperAdminPasswordError] = useState('');
   const [showSuperAdminPassword, setShowSuperAdminPassword] = useState(false);
+
+  // Firebase Connection Test state
+  const [isTestingFirebase, setIsTestingFirebase] = useState(false);
+  const [firebaseTestResult, setFirebaseTestResult] = useState<FirebaseConnectionTestResult | null>(null);
+
+  const handleTestFirebase = async () => {
+    setIsTestingFirebase(true);
+    try {
+      const res = await testFirebaseConnection();
+      setFirebaseTestResult(res);
+      addAuditLog(
+        'ทดสอบการเชื่อมต่อ Firebase',
+        `ผลการทดสอบการเชื่อมต่อฐานข้อมูล Firebase: ${res.success ? 'สำเร็จ (' + res.latencyMs + 'ms)' : 'ล้มเหลว (' + res.message + ')'}`
+      );
+    } catch (err: any) {
+      console.error("Firebase connection test error:", err);
+      setFirebaseTestResult({
+        success: false,
+        message: err?.message || 'เกิดข้อผิดพลาดไม่ทราบสาเหตุในการเชื่อมต่อ',
+        projectId: 'N/A',
+        databaseId: '(default)',
+        latencyMs: 0,
+        testedAt: new Date().toLocaleString('th-TH'),
+        canRead: false,
+        canWrite: false,
+      });
+    } finally {
+      setIsTestingFirebase(false);
+    }
+  };
 
   // Calculate Summary Statistics
   const totalRegistrations = attendees.length;
@@ -521,6 +571,308 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // --- ACTIVITY CSV TEMPLATE DOWNLOAD & FILE IMPORT ---
+  const handleDownloadActivityCSVTemplate = () => {
+    const headers = [
+      'รหัสกิจกรรม',
+      'ฝ่ายงาน/สาขา',
+      'ชื่อกิจกรรม (ไทย)',
+      'ชื่อกิจกรรม (อังกฤษ)',
+      'ระดับชั้นที่เข้าร่วม',
+      'รองรับต่อรอบ (คน)',
+      'จำนวนรอบ',
+      'ผู้ประสานงาน',
+      'เบอร์โทรศัพท์',
+      'ลิงก์ลงทะเบียน',
+      'สถานที่จัดงาน',
+      'ช่วงเวลา',
+    ];
+
+    const sampleRows = [
+      [
+        'SCI-PHYS-01',
+        'สาขาฟิสิกส์',
+        'การแข่งขันสิ่งประดิษฐ์ทางฟิสิกส์',
+        'Physics Innovation Competition',
+        'ม.1 - ม.6',
+        '30',
+        '3',
+        'ครูสมชาย ใจดี',
+        '0812345678',
+        'https://forms.gle/pcshsloei-phys',
+        'อาคารปฏิบัติการฟิสิกส์ ชั้น 2',
+        '09:00 - 15:30 น.',
+      ],
+      [
+        'SCI-CHEM-01',
+        'สาขาเคมี',
+        'การทดลองปฏิกิริยาเคมีเรืองแสง',
+        'Luminescent Chemical Reactions',
+        'ม.3 - ม.6',
+        '25',
+        '4',
+        'ครูวิภาดา สุขใจ',
+        '0898765432',
+        'https://forms.gle/pcshsloei-chem',
+        'อาคารปฏิบัติการเคมี ชั้น 1',
+        '09:00 - 15:00 น.',
+      ],
+      [
+        'ICT-ROBO-01',
+        'สาขาคอมพิวเตอร์และเทคโนโลยี',
+        'การแข่งขันหุ่นยนต์กู้ภัยสับปะรด',
+        'Rescue Robot Challenge',
+        'ม.1 - ม.6',
+        '20',
+        '5',
+        'ครูธนกร มั่นคง',
+        '0861112233',
+        'https://forms.gle/pcshsloei-robo',
+        'หอประชุมใหญ่ จุฬาภรณราชวิทยาลัย',
+        '08:30 - 16:00 น.',
+      ],
+    ];
+
+    let csvContent = '\uFEFF'; // UTF-8 BOM for Thai Excel compatibility
+    csvContent += headers.join(',') + '\n';
+    sampleRows.forEach((row) => {
+      const escapedRow = row.map((field) => `"${String(field).replace(/"/g, '""')}"`);
+      csvContent += escapedRow.join(',') + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'PCSHS_Loei_Activity_Template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleActivityFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCsvFileName(file.name);
+    setCsvParseError(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) {
+          setCsvParseError('ไฟล์ CSV ว่างเปล่า กรุณาตรวจสอบข้อมูลในไฟล์');
+          return;
+        }
+
+        const parseCSVRows = (rawText: string): string[][] => {
+          const result: string[][] = [];
+          let row: string[] = [];
+          let cur = '';
+          let inQuotes = false;
+
+          let cleanText = rawText;
+          if (cleanText.charCodeAt(0) === 0xFEFF) {
+            cleanText = cleanText.slice(1);
+          }
+
+          for (let i = 0; i < cleanText.length; i++) {
+            const char = cleanText[i];
+            const nextChar = cleanText[i + 1];
+
+            if (inQuotes) {
+              if (char === '"' && nextChar === '"') {
+                cur += '"';
+                i++;
+              } else if (char === '"') {
+                inQuotes = false;
+              } else {
+                cur += char;
+              }
+            } else {
+              if (char === '"') {
+                inQuotes = true;
+              } else if (char === ',') {
+                row.push(cur.trim());
+                cur = '';
+              } else if (char === '\r') {
+                // skip CR
+              } else if (char === '\n') {
+                row.push(cur.trim());
+                if (row.some((f) => f.length > 0)) {
+                  result.push(row);
+                }
+                row = [];
+                cur = '';
+              } else {
+                cur += char;
+              }
+            }
+          }
+
+          if (cur.length > 0 || row.length > 0) {
+            row.push(cur.trim());
+            if (row.some((f) => f.length > 0)) {
+              result.push(row);
+            }
+          }
+
+          return result;
+        };
+
+        const rows = parseCSVRows(text);
+        if (rows.length < 2) {
+          setCsvParseError('ไฟล์ CSV ต้องมีอย่างน้อยแถวหัวข้อ (Header) และข้อมูลอย่างน้อย 1 แถว');
+          return;
+        }
+
+        const headerRow = rows[0];
+        const dataRows = rows.slice(1);
+
+        const normalizeHeader = (header: string): string => {
+          const h = header.toLowerCase().replace(/[^a-z0-9ก-๙]/g, '');
+          if (h.includes('รหัส') || h.includes('code')) return 'code';
+          if (h.includes('ฝ่าย') || h.includes('สาขา') || h.includes('department')) return 'department';
+          if (h.includes('ไทย') || (h.includes('ชื่อ') && !h.includes('อังกฤษ') && !h.includes('eng')) || h.includes('titleth')) return 'titleTh';
+          if (h.includes('อังกฤษ') || h.includes('eng') || h.includes('titleen')) return 'titleEn';
+          if (h.includes('ระดับ') || h.includes('ชั้น') || h.includes('grade')) return 'targetGrade';
+          if (h.includes('รองรับ') || h.includes('ต่อรอบ') || h.includes('max')) return 'maxPerRound';
+          if (h.includes('รอบ') || h.includes('rounds')) return 'totalRounds';
+          if (h.includes('ผู้ประสานงาน') || h.includes('ครู') || h.includes('coordinator')) return 'coordinator';
+          if (h.includes('เบอร์') || h.includes('โทร') || h.includes('phone')) return 'phone';
+          if (h.includes('ลิงก์') || h.includes('ฟอร์ม') || h.includes('register') || h.includes('url')) return 'registerUrl';
+          if (h.includes('สถานที่') || h.includes('อาคาร') || h.includes('location')) return 'location';
+          if (h.includes('ช่วงเวลา') || h.includes('เวลา') || h.includes('time')) return 'timeSlot';
+          return '';
+        };
+
+        const colKeys = headerRow.map(normalizeHeader);
+
+        const parsedActivities: ActivityItem[] = [];
+
+        dataRows.forEach((row, idx) => {
+          let code = '';
+          let department = '';
+          let titleTh = '';
+          let titleEn = '';
+          let targetGrade = '';
+          let maxPerRound = 30;
+          let totalRounds = 3;
+          let coordinator = '';
+          let phone = '';
+          let registerUrl = '';
+          let location = '';
+          let timeSlot = '';
+
+          row.forEach((val, colIdx) => {
+            const key = colKeys[colIdx];
+            if (key === 'code') code = val;
+            else if (key === 'department') department = val;
+            else if (key === 'titleTh') titleTh = val;
+            else if (key === 'titleEn') titleEn = val;
+            else if (key === 'targetGrade') targetGrade = val;
+            else if (key === 'maxPerRound') maxPerRound = parseInt(val, 10) || 30;
+            else if (key === 'totalRounds') totalRounds = parseInt(val, 10) || 3;
+            else if (key === 'coordinator') coordinator = val;
+            else if (key === 'phone') phone = val;
+            else if (key === 'registerUrl') registerUrl = val;
+            else if (key === 'location') location = val;
+            else if (key === 'timeSlot') timeSlot = val;
+          });
+
+          if (!code && row[0]) code = row[0];
+          if (!department && row[1]) department = row[1];
+          if (!titleTh && row[2]) titleTh = row[2];
+          if (!titleEn && row[3]) titleEn = row[3];
+          if (!targetGrade && row[4]) targetGrade = row[4];
+          if (row[5] && isNaN(maxPerRound)) maxPerRound = parseInt(row[5], 10) || 30;
+          if (row[6] && isNaN(totalRounds)) totalRounds = parseInt(row[6], 10) || 3;
+          if (!coordinator && row[7]) coordinator = row[7];
+          if (!phone && row[8]) phone = row[8];
+          if (!registerUrl && row[9]) registerUrl = row[9];
+          if (!location && row[10]) location = row[10];
+          if (!timeSlot && row[11]) timeSlot = row[11];
+
+          if (!code) code = `ACT-${String(idx + 1).padStart(2, '0')}`;
+          if (!department) department = 'วิชาการทั่วไป';
+          if (!titleTh) titleTh = `กิจกรรม ${code}`;
+          if (!titleEn) titleEn = `Activity ${code}`;
+          if (!targetGrade) targetGrade = 'ม.1 - ม.6';
+          if (!coordinator) coordinator = 'ครูผู้ดูแลกิจกรรม';
+          if (!phone) phone = '042-811-xxx';
+          if (!registerUrl) registerUrl = 'https://forms.gle/pcshsloei-activity';
+          if (!location) location = 'อาคารปฏิบัติการวิทยาศาสตร์';
+          if (!timeSlot) timeSlot = '09:00 - 15:30 น.';
+
+          parsedActivities.push({
+            id: `act-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            code: code.trim(),
+            department: department.trim(),
+            titleTh: titleTh.trim(),
+            titleEn: titleEn.trim(),
+            targetGrade: targetGrade.trim(),
+            maxPerRound: maxPerRound || 30,
+            totalRounds: totalRounds || 3,
+            coordinator: coordinator.trim(),
+            phone: phone.trim(),
+            registerUrl: registerUrl.trim(),
+            location: location.trim(),
+            timeSlot: timeSlot.trim(),
+          });
+        });
+
+        if (parsedActivities.length === 0) {
+          setCsvParseError('ไม่สามารถดึงข้อมูลกิจกรรมจากไฟล์นี้ได้ กรุณาตรวจสอบรูปแบบไฟล์ CSV');
+          return;
+        }
+
+        setImportedCsvActivities(parsedActivities);
+      } catch (err: any) {
+        console.error('CSV Parsing Error:', err);
+        setCsvParseError('เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: ' + (err?.message || 'รูปแบบไฟล์ไม่ถูกต้อง'));
+      }
+    };
+
+    reader.readAsText(file, 'UTF-8');
+    e.target.value = '';
+  };
+
+  const handleConfirmImportActivities = async () => {
+    if (importedCsvActivities.length === 0) return;
+
+    let newActivitiesList: ActivityItem[] = [];
+    if (csvImportMode === 'replace') {
+      newActivitiesList = [...importedCsvActivities];
+    } else {
+      const existingCodes = new Set(activities.map((a) => a.code));
+      const dedupedImport = importedCsvActivities.map((act) => {
+        if (existingCodes.has(act.code)) {
+          return { ...act, code: `${act.code}_NEW` };
+        }
+        return act;
+      });
+      newActivitiesList = [...activities, ...dedupedImport];
+    }
+
+    setActivities(newActivitiesList);
+    await saveAllActivitiesToFirestore(importedCsvActivities);
+
+    addAuditLog(
+      'นำเข้ากิจกรรมผ่าน CSV',
+      `นำเข้าข้อมูลกิจกรรมจำนวน ${importedCsvActivities.length} รายการ จากไฟล์ "${csvFileName}" (โหมด: ${
+        csvImportMode === 'replace' ? 'แทนที่ทั้งหมด' : 'เพิ่มสมทบ'
+      })`
+    );
+
+    setShowActivityCsvModal(false);
+    setImportedCsvActivities([]);
+    setCsvFileName('');
+    setCsvParseError(null);
+    alert(`🎉 นำเข้าข้อมูลกิจกรรมสำเร็จจำนวน ${importedCsvActivities.length} รายการ!`);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -545,12 +897,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            {currentAdmin.role === 'super_admin' && (
+              <button
+                onClick={handleTestFirebase}
+                disabled={isTestingFirebase}
+                title="ทดสอบสถานะการเชื่อมต่อฐานข้อมูล Firebase"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow cursor-pointer transition-all hover:scale-105 active:scale-95 border border-orange-400/40"
+              >
+                <Database className={`w-4 h-4 ${isTestingFirebase ? 'animate-spin' : ''}`} />
+                <span>{isTestingFirebase ? 'กำลังทดสอบ...' : 'เช็คสถานะ Firebase'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* Navigation Tabs */}
@@ -918,20 +1284,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* TAB 4: ACTIVITIES MANAGEMENT */}
           {activeTab === 'activities' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <div>
-                  <h4 className="font-bold text-slate-900 text-base">จัดการกิจกรรมและนิทรรศการภายในงาน</h4>
-                  <p className="text-xs text-slate-500">
-                    เพิ่ม ลบ หรือแก้ไขกิจกรรมได้ตลอดเวลา ข้อมูลจะอัปเดตไปแสดงผลที่หน้าแรกทันที
+                  <h4 className="font-bold text-slate-900 text-base sm:text-lg">จัดการกิจกรรมและนิทรรศการภายในงาน</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    เพิ่ม ลบ แก้ไข หรือนำเข้าข้อมูลกิจกรรมผ่านไฟล์ .CSV ข้อมูลจะอัปเดตไปแสดงผลที่หน้าแรกทันที
                   </p>
                 </div>
-                <button
-                  onClick={() => handleOpenActivityModal()}
-                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>เพิ่มกิจกรรมใหม่</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleDownloadActivityCSVTemplate}
+                    className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-colors flex items-center gap-1.5"
+                    title="ดาวน์โหลดไฟล์แบบฟอร์ม .CSV สำหรับนำไปกรอกข้อมูลกิจกรรม"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <span>ดาวน์โหลดแบบฟอร์ม .CSV</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActivityCsvModal(true);
+                      setImportedCsvActivities([]);
+                      setCsvParseError(null);
+                    }}
+                    className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-colors flex items-center gap-1.5"
+                    title="อัปโหลดไฟล์ .CSV เพื่อนำเข้ากิจกรรมเข้าสู่ระบบ"
+                  >
+                    <FileUp className="w-4 h-4 text-blue-600" />
+                    <span>นำเข้ากิจกรรม (.CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenActivityModal()}
+                    className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>เพิ่มกิจกรรมใหม่</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -982,7 +1375,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* TAB 5: ADMINS MANAGEMENT (Super Admin Only) */}
           {activeTab === 'admins' && currentAdmin.role === 'super_admin' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
+              {/* FIREBASE DATABASE TEST SECTION FOR SUPER ADMIN */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl border border-slate-700 shadow-md space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-700 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-orange-400 shrink-0">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-white text-base sm:text-lg flex items-center gap-2">
+                        <span>ตรวจสอบสถานะการเชื่อมต่อฐานข้อมูล Firebase</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-400/30 text-orange-300">
+                          Firestore Database
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-300">
+                        ทดสอบรับ-ส่งข้อมูล (Ping Read/Write) เพื่อตรวจสอบสถานะการเชื่อมต่อแบบเรียลไทม์ระหว่างระบบและ Firebase
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleTestFirebase}
+                    disabled={isTestingFirebase}
+                    className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg cursor-pointer transition-all hover:scale-105 active:scale-95 flex items-center gap-2 border border-orange-400/40 shrink-0"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isTestingFirebase ? 'animate-spin' : ''}`} />
+                    <span>{isTestingFirebase ? 'กำลังทดสอบการเชื่อมต่อ...' : 'ทดสอบสถานะการเชื่อมต่อ Firebase'}</span>
+                  </button>
+                </div>
+
+                {/* Display Test Result */}
+                {firebaseTestResult ? (
+                  <div
+                    className={`p-4 rounded-xl border text-xs sm:text-sm space-y-3 ${
+                      firebaseTestResult.success
+                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100'
+                        : 'bg-rose-950/40 border-rose-500/50 text-rose-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold text-base">
+                      <div className="flex items-center gap-2">
+                        {firebaseTestResult.success ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                        ) : (
+                          <XCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                        )}
+                        <span>
+                          {firebaseTestResult.success
+                            ? 'เชื่อมต่อฐานข้อมูลสำเร็จ (Connected)'
+                            : 'การเชื่อมต่อล้มเหลว (Disconnected)'}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono px-2.5 py-1 bg-black/40 rounded-lg text-amber-300 border border-white/10">
+                        Latency: {firebaseTestResult.latencyMs} ms
+                      </span>
+                    </div>
+
+                    <p className="text-xs opacity-90 leading-relaxed">{firebaseTestResult.message}</p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/10 text-xs font-mono">
+                      <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-[10px] text-slate-400 block font-sans">Project ID</span>
+                        <span className="font-bold text-amber-300 truncate block" title={firebaseTestResult.projectId}>
+                          {firebaseTestResult.projectId}
+                        </span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-[10px] text-slate-400 block font-sans">Database ID</span>
+                        <span className="font-bold text-blue-300 truncate block" title={firebaseTestResult.databaseId}>
+                          {firebaseTestResult.databaseId}
+                        </span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-[10px] text-slate-400 block font-sans">สิทธิ์การอ่าน (Read)</span>
+                        <span className={`font-bold block ${firebaseTestResult.canRead ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {firebaseTestResult.canRead ? '✅ อ่านข้อมูลได้' : '❌ อ่านไม่ได้'}
+                        </span>
+                      </div>
+                      <div className="bg-black/30 p-2.5 rounded-lg border border-white/5">
+                        <span className="text-[10px] text-slate-400 block font-sans">สิทธิ์การเขียน (Write)</span>
+                        <span className={`font-bold block ${firebaseTestResult.canWrite ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {firebaseTestResult.canWrite ? '✅ เขียนข้อมูลได้' : '❌ เขียนไม่ได้'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 flex items-center justify-between pt-1">
+                      <span>เวลาทดสอบล่าสุด: {firebaseTestResult.testedAt}</span>
+                      {firebaseTestResult.errorDetail && (
+                        <span className="text-rose-300 font-mono text-[10px] truncate max-w-[300px]">
+                          Error: {firebaseTestResult.errorDetail}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/60 border border-slate-700/60 p-3.5 rounded-xl text-xs text-slate-300 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-orange-400" />
+                      <span>กดปุ่มข้างต้นเพื่อทดสอบการปิงสัญญาณ (Ping Read/Write Test) ไปยัง Firebase Firestore</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono">Status: พร้อมทดสอบ</span>
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <div>
                   <h4 className="font-bold text-slate-900 text-base">จัดการรายชื่อผู้ได้รับสิทธิ์ Admin</h4>
@@ -1668,6 +2167,190 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 บันทึกกิจกรรม
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activity CSV Upload Modal */}
+      {showActivityCsvModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-3xl my-auto bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-2xl text-slate-900 max-h-[92vh] overflow-y-auto">
+            <button
+              onClick={() => {
+                setShowActivityCsvModal(false);
+                setImportedCsvActivities([]);
+                setCsvParseError(null);
+              }}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-lg bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-orange-100 text-orange-600 rounded-2xl shrink-0">
+                <FileUp className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900">
+                  นำเข้ากิจกรรมด้วยไฟล์ .CSV
+                </h4>
+                <p className="text-xs text-slate-500">
+                  อัปโหลดไฟล์ข้อมูลกิจกรรม หรือดาวน์โหลดแบบฟอร์มแม่แบบเพื่อนำไปกรอกข้อมูล
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Template Download Banner inside Modal */}
+            <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3.5 mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-start gap-2 text-amber-900">
+                <FileSpreadsheet className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-slate-900">ยังไม่มีแบบฟอร์มไฟล์ CSV?</p>
+                  <p className="text-slate-600">ดาวน์โหลดแบบฟอร์มแม่แบบ .CSV ที่มีหัวข้อคอลัมน์ถูกต้องพร้อมตัวอย่างข้อมูล</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleDownloadActivityCSVTemplate}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-all flex items-center gap-1.5 shrink-0"
+              >
+                <Download className="w-4 h-4" />
+                <span>ดาวน์โหลดแบบฟอร์ม (.CSV)</span>
+              </button>
+            </div>
+
+            {/* Upload Area */}
+            {importedCsvActivities.length === 0 ? (
+              <div className="space-y-4">
+                <label className="border-2 border-dashed border-slate-300 hover:border-orange-500 bg-slate-50/80 hover:bg-orange-50/30 rounded-2xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all group">
+                  <div className="w-14 h-14 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                    <Upload className="w-7 h-7" />
+                  </div>
+                  <p className="font-bold text-slate-800 text-sm mb-1">
+                    คลิกเพื่อเลือกไฟล์ .CSV หรือลากไฟล์มาวางที่นี่
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    รองรับไฟล์ประเภท .csv (บันทึกด้วยรหัส UTF-8)
+                  </p>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleActivityFileUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {csvParseError && (
+                  <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>{csvParseError}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Preview Area */
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl">
+                  <div className="flex items-center gap-2 text-emerald-800 text-xs font-semibold">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>
+                      อ่านไฟล์ <strong className="font-mono">{csvFileName}</strong> สำเร็จ! พบทั้งหมด{' '}
+                      <strong className="text-emerald-700 text-sm">{importedCsvActivities.length}</strong> กิจกรรม
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportedCsvActivities([]);
+                      setCsvFileName('');
+                    }}
+                    className="text-xs text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                  >
+                    เลือกไฟล์อื่น
+                  </button>
+                </div>
+
+                {/* Import Mode Selection */}
+                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl text-xs space-y-2">
+                  <label className="block font-bold text-slate-800">เลือกโหมดการนำเข้าข้อมูล:</label>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="importMode"
+                        value="append"
+                        checked={csvImportMode === 'append'}
+                        onChange={() => setCsvImportMode('append')}
+                        className="text-orange-500 focus:ring-orange-400"
+                      />
+                      <span className="font-medium text-slate-700">เพิ่มสมทบเข้ากับกิจกรรมเดิม (Append)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="importMode"
+                        value="replace"
+                        checked={csvImportMode === 'replace'}
+                        onChange={() => setCsvImportMode('replace')}
+                        className="text-orange-500 focus:ring-orange-400"
+                      />
+                      <span className="font-medium text-slate-700">แทนที่กิจกรรมทั้งหมดด้วยไฟล์นี้ (Replace All)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Preview Table */}
+                <div>
+                  <h5 className="font-bold text-xs text-slate-700 mb-2">ตัวอย่างกิจกรรมที่จะถูกนำเข้า ({importedCsvActivities.length} รายการ):</h5>
+                  <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl overflow-x-auto">
+                    <table className="w-full text-left text-xs text-slate-700">
+                      <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b border-slate-200">
+                        <tr>
+                          <th className="px-3 py-2">รหัส</th>
+                          <th className="px-3 py-2">ฝ่ายงาน</th>
+                          <th className="px-3 py-2">ชื่อกิจกรรม (ไทย)</th>
+                          <th className="px-3 py-2">ระดับชั้น</th>
+                          <th className="px-3 py-2">ผู้ประสานงาน</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {importedCsvActivities.map((act, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 font-mono font-bold text-orange-600">{act.code}</td>
+                            <td className="px-3 py-2 text-slate-600">{act.department}</td>
+                            <td className="px-3 py-2 font-semibold text-slate-900">{act.titleTh}</td>
+                            <td className="px-3 py-2 text-slate-600">{act.targetGrade}</td>
+                            <td className="px-3 py-2 text-slate-600">{act.coordinator} ({act.phone})</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActivityCsvModal(false);
+                      setImportedCsvActivities([]);
+                    }}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmImportActivities}
+                    className="flex-1 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-lg shadow-orange-500/20 cursor-pointer transition-all flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>ยืนยันนำเข้าข้อมูล {importedCsvActivities.length} กิจกรรม</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

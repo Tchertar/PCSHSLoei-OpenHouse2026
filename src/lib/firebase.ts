@@ -6,7 +6,8 @@ import {
   setDoc, 
   deleteDoc, 
   onSnapshot, 
-  query 
+  query,
+  getDocFromServer
 } from 'firebase/firestore';
 import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -266,6 +267,85 @@ export const deleteScheduleFromFirestore = async (id: string) => {
     await deleteDoc(doc(db, SCHEDULES_COLLECTION, id));
   } catch (err) {
     console.error("Error deleting schedule item from Firestore:", err);
+  }
+};
+
+// --- FIREBASE CONNECTION TEST ---
+export interface FirebaseConnectionTestResult {
+  success: boolean;
+  message: string;
+  projectId: string;
+  databaseId: string;
+  latencyMs: number;
+  testedAt: string;
+  canRead: boolean;
+  canWrite: boolean;
+  errorDetail?: string;
+}
+
+export const testFirebaseConnection = async (): Promise<FirebaseConnectionTestResult> => {
+  const startTime = performance.now();
+  const projectId = (firebaseConfig as any).projectId || 'N/A';
+  const databaseId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
+  const nowTh = new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'medium' });
+
+  try {
+    const testDocRef = doc(db, '_connection_test_', 'status');
+    const testData = {
+      pingAt: new Date().toISOString(),
+      agent: 'PCSHS Loei Admin Test',
+    };
+
+    // Test Write
+    await setDoc(testDocRef, testData, { merge: true });
+
+    // Test Read directly from server (bypassing offline cache)
+    const snap = await getDocFromServer(testDocRef);
+
+    const endTime = performance.now();
+    const latencyMs = Math.round(endTime - startTime);
+
+    if (snap.exists()) {
+      // Clean up test doc
+      deleteDoc(testDocRef).catch(() => {});
+
+      return {
+        success: true,
+        message: 'เชื่อมต่อกับระบบฐานข้อมูล Firebase Firestore สำเร็จเรียบร้อย สามารถอ่านและเขียนข้อมูลได้ตามปกติ',
+        projectId,
+        databaseId,
+        latencyMs,
+        testedAt: nowTh,
+        canRead: true,
+        canWrite: true,
+      };
+    } else {
+      return {
+        success: false,
+        message: 'ไม่พบการตอบสนองของเอกสารทดสอบจาก Firebase Firestore บนเซิร์ฟเวอร์',
+        projectId,
+        databaseId,
+        latencyMs,
+        testedAt: nowTh,
+        canRead: false,
+        canWrite: true,
+      };
+    }
+  } catch (err: any) {
+    const endTime = performance.now();
+    const latencyMs = Math.round(endTime - startTime);
+    console.error("Firebase connection test error:", err);
+    return {
+      success: false,
+      message: err?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Firebase Firestore',
+      projectId,
+      databaseId,
+      latencyMs,
+      testedAt: nowTh,
+      canRead: false,
+      canWrite: false,
+      errorDetail: err?.toString() || String(err),
+    };
   }
 };
 

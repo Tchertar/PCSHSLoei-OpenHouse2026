@@ -19,6 +19,22 @@
     50% { opacity: 1; transform: scale(1.02); }
   }
 
+  @keyframes swaySunflower {
+    0%, 100% { transform: rotate(-3deg) translateY(0px); }
+    50% { transform: rotate(3deg) translateY(-4px); }
+  }
+
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.2; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  @keyframes shootingStar {
+    0% { transform: translateX(0) translateY(0) scale(0); opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translateX(-300px) translateY(300px) scale(1); opacity: 0; }
+  }
+
   .animate-cloud-slow {
     animation: floatCloudSlow 28s ease-in-out infinite;
   }
@@ -29,6 +45,19 @@
 
   .animate-pulse-glow {
     animation: pulseGlow 3s ease-in-out infinite;
+  }
+
+  .animate-sway {
+    transform-origin: bottom center;
+    animation: swaySunflower 4s ease-in-out infinite;
+  }
+
+  .animate-twinkle {
+    animation: twinkle 3s ease-in-out infinite;
+  }
+
+  .animate-shooting-star {
+    animation: shootingStar 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 }
 
