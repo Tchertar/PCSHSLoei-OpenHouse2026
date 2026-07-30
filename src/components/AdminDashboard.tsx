@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { ActivityItem, AdminRole, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
 import {
   saveAttendeeToFirestore,
@@ -318,26 +319,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAttendees(updated);
   };
 
-  // Export Attendees to CSV/Excel excluding passwords
-  const handleExportCSV = () => {
+  // Export Attendees to XLSX Excel file excluding passwords
+  const handleExportXLSX = () => {
     const headers = [
-      'Participant Code',
-      'First Name',
-      'Last Name',
-      'Email',
-      'Phone',
-      'Status',
-      'Organization',
-      'District',
-      'Province',
-      'Attendee Count',
-      'Transport Method',
-      'Register Date',
-      'Checked In Status',
-      'Checked In Time',
+      'รหัสประจำตัว (Participant Code)',
+      'ชื่อ',
+      'นามสกุล',
+      'อีเมล (Email)',
+      'เบอร์โทรศัพท์ (Phone)',
+      'สถานภาพ',
+      'หน่วยงาน / สถาบัน',
+      'อำเภอ / เขต',
+      'จังหวัด',
+      'จำนวนผู้ร่วมงาน (คน)',
+      'วิธีการเดินทาง',
+      'วันที่ลงทะเบียน',
+      'สถานะเช็คอิน',
+      'เวลาเช็คอิน',
     ];
 
-    const rows = attendees.map((a) => [
+    const dataRows = attendees.map((a) => [
       a.participantCode,
       a.firstName,
       a.lastName,
@@ -350,27 +351,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       a.attendeeCount,
       a.transportMethod,
       a.registeredAt,
-      a.checkedIn ? 'YES' : 'NO',
+      a.checkedIn ? 'เช็คอินแล้ว (YES)' : 'ยังไม่เช็คอิน (NO)',
       a.checkedInAt || '-',
     ]);
 
-    let csvContent = '\uFEFF'; // UTF-8 BOM for Thai Excel compatibility
-    csvContent += headers.join(',') + '\n';
-    rows.forEach((row) => {
-      const escapedRow = row.map((field) => `"${String(field).replace(/"/g, '""')}"`);
-      csvContent += escapedRow.join(',') + '\n';
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+
+    // Auto fit column widths
+    const colWidths = headers.map((h, i) => {
+      let maxLen = h.length;
+      dataRows.forEach((row) => {
+        const val = String(row[i] || '');
+        if (val.length > maxLen) maxLen = val.length;
+      });
+      return { wch: Math.min(Math.max(maxLen + 4, 12), 40) };
     });
+    worksheet['!cols'] = colWidths;
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `PCSHS_Loei_OpenHouse_Attendees_${new Date().toISOString().substring(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'ผู้ลงทะเบียน');
 
-    addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ CSV ข้อมูลผู้เข้าร่วมงานทั้งหมด (ยกเว้นรหัสผ่าน)');
+    const fileName = `PCSHS_Loei_OpenHouse_Attendees_${new Date().toISOString().substring(0, 10)}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+
+    addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ Excel (.xlsx) ข้อมูลผู้เข้าร่วมงานทั้งหมด');
   };
 
   // Delete Attendee with Super Admin password confirmation
@@ -584,7 +588,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // --- ACTIVITY CSV TEMPLATE DOWNLOAD & FILE IMPORT ---
+  // --- ACTIVITY XLSX/CSV TEMPLATE DOWNLOAD & FILE IMPORT ---
   const handleDownloadActivityCSVTemplate = () => {
     const headers = [
       'รหัสกิจกรรม',
@@ -608,8 +612,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         'การแข่งขันสิ่งประดิษฐ์ทางฟิสิกส์',
         'Physics Innovation Competition',
         'ม.1 - ม.6',
-        '30',
-        '3',
+        30,
+        3,
         'ครูสมชาย ใจดี',
         '0812345678',
         'https://forms.gle/pcshsloei-phys',
@@ -622,8 +626,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         'การทดลองปฏิกิริยาเคมีเรืองแสง',
         'Luminescent Chemical Reactions',
         'ม.3 - ม.6',
-        '25',
-        '4',
+        25,
+        4,
         'ครูวิภาดา สุขใจ',
         '0898765432',
         'https://forms.gle/pcshsloei-chem',
@@ -636,8 +640,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         'การแข่งขันหุ่นยนต์กู้ภัยสับปะรด',
         'Rescue Robot Challenge',
         'ม.1 - ม.6',
-        '20',
-        '5',
+        20,
+        5,
         'ครูธนกร มั่นคง',
         '0861112233',
         'https://forms.gle/pcshsloei-robo',
@@ -646,22 +650,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ],
     ];
 
-    let csvContent = '\uFEFF'; // UTF-8 BOM for Thai Excel compatibility
-    csvContent += headers.join(',') + '\n';
-    sampleRows.forEach((row) => {
-      const escapedRow = row.map((field) => `"${String(field).replace(/"/g, '""')}"`);
-      csvContent += escapedRow.join(',') + '\n';
-    });
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'PCSHS_Loei_Activity_Template.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Set column widths so text doesn't get clipped in Excel
+    worksheet['!cols'] = [
+      { wch: 15 }, // รหัสกิจกรรม
+      { wch: 22 }, // ฝ่ายงาน/สาขา
+      { wch: 32 }, // ชื่อกิจกรรม (ไทย)
+      { wch: 32 }, // ชื่อกิจกรรม (อังกฤษ)
+      { wch: 15 }, // ระดับชั้น
+      { wch: 18 }, // รองรับต่อรอบ
+      { wch: 12 }, // จำนวนรอบ
+      { wch: 20 }, // ผู้ประสานงาน
+      { wch: 15 }, // เบอร์โทรศัพท์
+      { wch: 35 }, // ลิงก์
+      { wch: 32 }, // สถานที่
+      { wch: 18 }, // ช่วงเวลา
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'แบบฟอร์มกิจกรรม');
+
+    XLSX.writeFile(workbook, 'PCSHS_Loei_Activity_Template.xlsx');
+    addAuditLog('ดาวน์โหลดแม่แบบ', 'ดาวน์โหลดแบบฟอร์มไฟล์ Excel (.xlsx) สำหรับกิจกรรม');
   };
 
   const handleActivityFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -674,74 +685,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        if (!text) {
-          setCsvParseError('ไฟล์ CSV ว่างเปล่า กรุณาตรวจสอบข้อมูลในไฟล์');
+        const buffer = event.target?.result;
+        if (!buffer) {
+          setCsvParseError('ไฟล์ว่างเปล่า กรุณาตรวจสอบข้อมูลในไฟล์');
           return;
         }
 
-        const parseCSVRows = (rawText: string): string[][] => {
-          const result: string[][] = [];
-          let row: string[] = [];
-          let cur = '';
-          let inQuotes = false;
+        // Parse both .xlsx and .csv seamlessly
+        const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) {
+          setCsvParseError('ไม่พบแผ่นงาน (Sheet) ในไฟล์');
+          return;
+        }
 
-          let cleanText = rawText;
-          if (cleanText.charCodeAt(0) === 0xFEFF) {
-            cleanText = cleanText.slice(1);
-          }
+        const sheet = workbook.Sheets[firstSheetName];
+        // Convert sheet to 2D string array
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
 
-          for (let i = 0; i < cleanText.length; i++) {
-            const char = cleanText[i];
-            const nextChar = cleanText[i + 1];
+        if (!rawRows || rawRows.length < 2) {
+          setCsvParseError('ไฟล์ต้องมีอย่างน้อย 2 แถว (แถวหัวข้อ Header และแถวข้อมูลกิจกรรม)');
+          return;
+        }
 
-            if (inQuotes) {
-              if (char === '"' && nextChar === '"') {
-                cur += '"';
-                i++;
-              } else if (char === '"') {
-                inQuotes = false;
-              } else {
-                cur += char;
-              }
-            } else {
-              if (char === '"') {
-                inQuotes = true;
-              } else if (char === ',') {
-                row.push(cur.trim());
-                cur = '';
-              } else if (char === '\r') {
-                // skip CR
-              } else if (char === '\n') {
-                row.push(cur.trim());
-                if (row.some((f) => f.length > 0)) {
-                  result.push(row);
-                }
-                row = [];
-                cur = '';
-              } else {
-                cur += char;
-              }
-            }
-          }
+        // Filter out completely empty rows
+        const rows = rawRows.filter((r) => r && r.some((val) => val !== undefined && String(val).trim() !== ''));
 
-          if (cur.length > 0 || row.length > 0) {
-            row.push(cur.trim());
-            if (row.some((f) => f.length > 0)) {
-              result.push(row);
-            }
-          }
-
-          return result;
-        };
-
-        const rows = parseCSVRows(text);
         if (rows.length < 2) {
-          setCsvParseError('ไฟล์ CSV ต้องมีอย่างน้อยแถวหัวข้อ (Header) และข้อมูลอย่างน้อย 1 แถว');
+          setCsvParseError('ไม่พบข้อมูลกิจกรรมในไฟล์ กรุณากรอกข้อมูลตามแบบฟอร์มแม่แบบ');
           return;
         }
 
-        const headerRow = rows[0];
+        const headerRow = rows[0].map((h) => String(h).trim());
         const dataRows = rows.slice(1);
 
         const normalizeHeader = (header: string): string => {
@@ -779,7 +754,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           let location = '';
           let timeSlot = '';
 
-          row.forEach((val, colIdx) => {
+          row.forEach((rawVal, colIdx) => {
+            const val = String(rawVal || '').trim();
             const key = colKeys[colIdx];
             if (key === 'code') code = val;
             else if (key === 'department') department = val;
@@ -795,18 +771,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             else if (key === 'timeSlot') timeSlot = val;
           });
 
-          if (!code && row[0]) code = row[0];
-          if (!department && row[1]) department = row[1];
-          if (!titleTh && row[2]) titleTh = row[2];
-          if (!titleEn && row[3]) titleEn = row[3];
-          if (!targetGrade && row[4]) targetGrade = row[4];
-          if (row[5] && isNaN(maxPerRound)) maxPerRound = parseInt(row[5], 10) || 30;
-          if (row[6] && isNaN(totalRounds)) totalRounds = parseInt(row[6], 10) || 3;
-          if (!coordinator && row[7]) coordinator = row[7];
-          if (!phone && row[8]) phone = row[8];
-          if (!registerUrl && row[9]) registerUrl = row[9];
-          if (!location && row[10]) location = row[10];
-          if (!timeSlot && row[11]) timeSlot = row[11];
+          if (!code && row[0]) code = String(row[0]).trim();
+          if (!department && row[1]) department = String(row[1]).trim();
+          if (!titleTh && row[2]) titleTh = String(row[2]).trim();
+          if (!titleEn && row[3]) titleEn = String(row[3]).trim();
+          if (!targetGrade && row[4]) targetGrade = String(row[4]).trim();
+          if (row[5] && isNaN(maxPerRound)) maxPerRound = parseInt(String(row[5]), 10) || 30;
+          if (row[6] && isNaN(totalRounds)) totalRounds = parseInt(String(row[6]), 10) || 3;
+          if (!coordinator && row[7]) coordinator = String(row[7]).trim();
+          if (!phone && row[8]) phone = String(row[8]).trim();
+          if (!registerUrl && row[9]) registerUrl = String(row[9]).trim();
+          if (!location && row[10]) location = String(row[10]).trim();
+          if (!timeSlot && row[11]) timeSlot = String(row[11]).trim();
 
           if (!code) code = `ACT-${String(idx + 1).padStart(2, '0')}`;
           if (!department) department = 'วิชาการทั่วไป';
@@ -837,18 +813,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         });
 
         if (parsedActivities.length === 0) {
-          setCsvParseError('ไม่สามารถดึงข้อมูลกิจกรรมจากไฟล์นี้ได้ กรุณาตรวจสอบรูปแบบไฟล์ CSV');
+          setCsvParseError('ไม่สามารถดึงข้อมูลกิจกรรมจากไฟล์นี้ได้ กรุณาตรวจสอบรูปแบบไฟล์');
           return;
         }
 
         setImportedCsvActivities(parsedActivities);
       } catch (err: any) {
-        console.error('CSV Parsing Error:', err);
-        setCsvParseError('เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: ' + (err?.message || 'รูปแบบไฟล์ไม่ถูกต้อง'));
+        console.error('File Parsing Error:', err);
+        setCsvParseError('เกิดข้อผิดพลาดในการอ่านไฟล์: ' + (err?.message || 'รูปแบบไฟล์ไม่ถูกต้อง'));
       }
     };
 
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -1204,11 +1180,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <button
-                  onClick={handleExportCSV}
+                  onClick={handleExportXLSX}
                   className="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
                 >
-                  <Download className="w-4 h-4" />
-                  <span>Export ข้อมูลผู้เข้าร่วม (CSV/Excel)</span>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Export ข้อมูลผู้เข้าร่วม (.XLSX)</span>
                 </button>
               </div>
 
@@ -1301,7 +1277,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <h4 className="font-bold text-slate-900 text-base sm:text-lg">จัดการกิจกรรมและนิทรรศการภายในงาน</h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    เพิ่ม ลบ แก้ไข หรือนำเข้าข้อมูลกิจกรรมผ่านไฟล์ .CSV ข้อมูลจะอัปเดตไปแสดงผลที่หน้าแรกทันที
+                    เพิ่ม ลบ แก้ไข หรือนำเข้าข้อมูลกิจกรรมผ่านไฟล์ Excel (.XLSX) ข้อมูลจะอัปเดตไปแสดงผลที่หน้าแรกทันที
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
@@ -1309,10 +1285,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="button"
                     onClick={handleDownloadActivityCSVTemplate}
                     className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-colors flex items-center gap-1.5"
-                    title="ดาวน์โหลดไฟล์แบบฟอร์ม .CSV สำหรับนำไปกรอกข้อมูลกิจกรรม"
+                    title="ดาวน์โหลดไฟล์แบบฟอร์ม .XLSX สำหรับนำไปกรอกข้อมูลกิจกรรม"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    <span>ดาวน์โหลดแบบฟอร์ม .CSV</span>
+                    <span>ดาวน์โหลดแบบฟอร์ม .XLSX</span>
                   </button>
 
                   <button
@@ -1323,10 +1299,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setCsvParseError(null);
                     }}
                     className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs rounded-xl shadow-sm cursor-pointer transition-colors flex items-center gap-1.5"
-                    title="อัปโหลดไฟล์ .CSV เพื่อนำเข้ากิจกรรมเข้าสู่ระบบ"
+                    title="อัปโหลดไฟล์ Excel (.XLSX) หรือ .CSV เพื่อนำเข้ากิจกรรมเข้าสู่ระบบ"
                   >
                     <FileUp className="w-4 h-4 text-blue-600" />
-                    <span>นำเข้ากิจกรรม (.CSV)</span>
+                    <span>นำเข้ากิจกรรม (.XLSX / .CSV)</span>
                   </button>
 
                   <button
@@ -2225,10 +2201,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
               <div>
                 <h4 className="text-lg font-extrabold text-slate-900">
-                  นำเข้ากิจกรรมด้วยไฟล์ .CSV
+                  นำเข้ากิจกรรมด้วยไฟล์ Excel (.XLSX)
                 </h4>
                 <p className="text-xs text-slate-500">
-                  อัปโหลดไฟล์ข้อมูลกิจกรรม หรือดาวน์โหลดแบบฟอร์มแม่แบบเพื่อนำไปกรอกข้อมูล
+                  อัปโหลดไฟล์ข้อมูลกิจกรรม (.XLSX หรือ .CSV) หรือดาวน์โหลดแบบฟอร์มแม่แบบเพื่อนำไปกรอกข้อมูล
                 </p>
               </div>
             </div>
@@ -2238,8 +2214,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex items-start gap-2 text-amber-900">
                 <FileSpreadsheet className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-bold text-slate-900">ยังไม่มีแบบฟอร์มไฟล์ CSV?</p>
-                  <p className="text-slate-600">ดาวน์โหลดแบบฟอร์มแม่แบบ .CSV ที่มีหัวข้อคอลัมน์ถูกต้องพร้อมตัวอย่างข้อมูล</p>
+                  <p className="font-bold text-slate-900">ยังไม่มีแบบฟอร์มไฟล์ Excel?</p>
+                  <p className="text-slate-600">ดาวน์โหลดแบบฟอร์มแม่แบบ .XLSX ที่แยกคอลัมน์และตั้งค่าหัวข้ออย่างถูกต้อง</p>
                 </div>
               </div>
               <button
@@ -2248,7 +2224,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow-sm cursor-pointer transition-all flex items-center gap-1.5 shrink-0"
               >
                 <Download className="w-4 h-4" />
-                <span>ดาวน์โหลดแบบฟอร์ม (.CSV)</span>
+                <span>ดาวน์โหลดแบบฟอร์ม (.XLSX)</span>
               </button>
             </div>
 
@@ -2260,14 +2236,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Upload className="w-7 h-7" />
                   </div>
                   <p className="font-bold text-slate-800 text-sm mb-1">
-                    คลิกเพื่อเลือกไฟล์ .CSV หรือลากไฟล์มาวางที่นี่
+                    คลิกเพื่อเลือกไฟล์ .XLSX หรือ .CSV หรือลากไฟล์มาวางที่นี่
                   </p>
                   <p className="text-xs text-slate-500">
-                    รองรับไฟล์ประเภท .csv (บันทึกด้วยรหัส UTF-8)
+                    แนะนำให้ใช้ไฟล์ .xlsx (Excel) เพื่อคอลัมน์ที่สมบูรณ์และแสดงภาษาไทยได้ถูกต้อง 100%
                   </p>
                   <input
                     type="file"
-                    accept=".csv,text/csv"
+                    accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
                     onChange={handleActivityFileUpload}
                     className="hidden"
                   />
