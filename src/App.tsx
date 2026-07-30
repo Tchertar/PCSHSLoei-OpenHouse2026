@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { ActivityItem, AdminUser, Attendee, AuditLog, ScheduleItem } from './types';
 import {
   FAQ_LIST,
-  NEWS_LIST,
   SCHEDULE_LIST,
 } from './data/initialData';
 
@@ -13,7 +12,6 @@ import { Banner } from './components/Banner';
 import { CountdownTimer } from './components/CountdownTimer';
 import { ActivitiesSection } from './components/ActivitiesSection';
 import { MapSection } from './components/MapSection';
-import { NewsSection } from './components/NewsSection';
 import { ScheduleSection } from './components/ScheduleSection';
 import { FaqSection } from './components/FaqSection';
 import { Footer } from './components/Footer';
@@ -366,9 +364,6 @@ export default function App() {
 
         {/* Venue Map Section */}
         <MapSection />
-
-        {/* News & Announcements Section */}
-        <NewsSection news={NEWS_LIST} />
 
         {/* Daily Schedule Program Section */}
         <ScheduleSection schedule={schedules} />

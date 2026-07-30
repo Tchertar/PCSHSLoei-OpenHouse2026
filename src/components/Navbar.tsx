@@ -50,7 +50,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     { name: 'กิจกรรม&การแข่งขัน', href: '#activities', icon: Trophy },
     { name: 'แผนผังงาน', href: '#map', icon: Map },
     { name: 'กำหนดการ', href: '#schedule', icon: Calendar },
-    { name: 'ข่าวสาร', href: '#news', icon: Calendar },
     { name: 'คำถามที่พบบ่อย (FAQ)', href: '#faq', icon: HelpCircle },
   ];
 

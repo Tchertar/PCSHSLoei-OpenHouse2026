@@ -61,15 +61,6 @@ export interface ActivityItem {
   timeSlot?: string;
 }
 
-export interface NewsItem {
-  id: string;
-  title: string;
-  category: 'ข่าวประชาสัมพันธ์' | 'กำหนดการ' | 'การแข่งขัน' | 'ผลรางวัล' | 'การลงทะเบียน';
-  date: string;
-  content: string;
-  important?: boolean;
-}
-
 export interface FaqItem {
   id: string;
   question: string;
