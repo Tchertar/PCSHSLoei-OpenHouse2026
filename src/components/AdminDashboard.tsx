@@ -174,7 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     totalRounds: 3,
     coordinator: '',
     phone: '',
-    registerUrl: 'https://forms.gle/pcshsloei-activity',
+    registerUrl: '',
     location: 'อาคารปฏิบัติการวิทยาศาสตร์',
     timeSlot: '09:00 - 15:30 น.',
   });
@@ -806,7 +806,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (!targetGrade) targetGrade = 'ม.1 - ม.6';
           if (!coordinator) coordinator = 'ครูผู้ดูแลกิจกรรม';
           if (!phone) phone = '042-811-xxx';
-          if (!registerUrl) registerUrl = 'https://forms.gle/pcshsloei-activity';
+          if (!registerUrl) registerUrl = '';
           if (!location) location = 'อาคารปฏิบัติการวิทยาศาสตร์';
           if (!timeSlot) timeSlot = '09:00 - 15:30 น.';
 
