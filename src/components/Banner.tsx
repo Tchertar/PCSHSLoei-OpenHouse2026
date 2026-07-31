@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Search, FileText, Download, Building2 } from 'lucide-react';
+import { Sparkles, Search, FileText, Download, Building2, Lock } from 'lucide-react';
 
 export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: () => void }> = ({ onRegisterClick, onOpenOrgModal }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -8,6 +8,9 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
   const [containerDim, setContainerDim] = useState({ width: 0, height: 0 });
   const [imgSrc, setImgSrc] = useState('https://lh3.googleusercontent.com/d/1Krk3TbqazkWZOx-XTLRXTuIrBu45rX0-');
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  const REGISTRATION_START_DATE = new Date('2026-08-05T00:00:00');
+  const isRegistrationOpen = new Date() >= REGISTRATION_START_DATE;
 
   // Smooth Parallax tilt & translation state
   const [tilt, setTilt] = useState({ rotX: 0, rotY: 0, transX: 0, transY: 0 });
@@ -176,10 +179,25 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
 
           <button
             onClick={onRegisterClick}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30"
+            disabled={!isRegistrationOpen}
+            title={!isRegistrationOpen ? 'ระบบลงทะเบียนสำหรับบุคคลทั่วไปจะเปิดในวันที่ 5 สิงหาคม 2569' : 'ลงทะเบียนบุคคลทั่วไป'}
+            className={
+              isRegistrationOpen
+                ? 'w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30'
+                : 'w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 text-slate-400 font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-80'
+            }
           >
-            <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
-            <span>ลงทะเบียนบุคคลทั่วไป</span>
+            {isRegistrationOpen ? (
+              <>
+                <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
+                <span>ลงทะเบียนบุคคลทั่วไป</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-4 h-4 text-slate-400" />
+                <span>ลงทะเบียนบุคคลทั่วไป (เปิด 5 ส.ค. 69)</span>
+              </>
+            )}
           </button>
 
           {onOpenOrgModal && (

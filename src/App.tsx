@@ -38,7 +38,7 @@ import {
 } from './lib/firebase';
 
 import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
-import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2 } from 'lucide-react';
+import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2, Lock } from 'lucide-react';
 
 const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
   {
@@ -165,6 +165,15 @@ export default function App() {
   const [loginInitialTab, setLoginInitialTab] = useState<'admin' | 'user'>('user');
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
+
+  const REGISTRATION_START_DATE = new Date('2026-08-05T00:00:00');
+  const isRegistrationOpen = new Date() >= REGISTRATION_START_DATE;
+
+  const handleGeneralRegisterClick = () => {
+    if (isRegistrationOpen) {
+      setIsRegisterOpen(true);
+    }
+  };
 
   const handleOpenUserLogin = () => {
     setLoginInitialTab('user');
@@ -328,7 +337,7 @@ export default function App() {
 
         {/* Hero Full-width Banner */}
         <Banner
-          onRegisterClick={() => setIsRegisterOpen(true)}
+          onRegisterClick={handleGeneralRegisterClick}
           onOpenOrgModal={() => setIsOrgModalOpen(true)}
         />
 
@@ -369,12 +378,27 @@ export default function App() {
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 {/* Standard Registration Button */}
                 <button
-                  onClick={() => setIsRegisterOpen(true)}
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 group border border-orange-400/40"
+                  onClick={handleGeneralRegisterClick}
+                  disabled={!isRegistrationOpen}
+                  title={!isRegistrationOpen ? 'ระบบลงทะเบียนสำหรับบุคคลทั่วไปจะเปิดในวันที่ 5 สิงหาคม 2569' : 'ลงทะเบียนสำหรับบุคคลทั่วไป'}
+                  className={
+                    isRegistrationOpen
+                      ? 'w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 group border border-orange-400/40'
+                      : 'w-full sm:w-auto px-8 py-4 bg-slate-200/90 text-slate-500 font-extrabold text-base sm:text-lg rounded-2xl shadow-none cursor-not-allowed border border-slate-300 flex items-center justify-center gap-2.5'
+                  }
                 >
-                  <Sparkles className="w-5 h-5 text-amber-200" />
-                  <span>ลงทะเบียนสำหรับบุคคลทั่วไป</span>
-                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                  {isRegistrationOpen ? (
+                    <>
+                      <Sparkles className="w-5 h-5 text-amber-200" />
+                      <span>ลงทะเบียนสำหรับบุคคลทั่วไป</span>
+                      <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-5 h-5 text-slate-400" />
+                      <span>ลงทะเบียนสำหรับบุคคลทั่วไป (เปิดรับ 5 ส.ค. 69)</span>
+                    </>
+                  )}
                 </button>
 
                 {/* Organization Registration Button */}
