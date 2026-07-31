@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ActivityItem } from '../types';
-import { ExternalLink, Filter, MapPin, Phone, Search, Trophy, Users, Clock, BookOpen, Layers } from 'lucide-react';
+import { ActivityItem, Attendee } from '../types';
+import { ExternalLink, Filter, MapPin, Phone, Search, Trophy, Users, Clock, BookOpen, Layers, Lock } from 'lucide-react';
 
 interface ActivitiesSectionProps {
   activities: ActivityItem[];
+  currentAttendee?: Attendee | null;
 }
 
-export const ActivitiesSection: React.FC<ActivitiesSectionProps> = ({ activities }) => {
+export const ActivitiesSection: React.FC<ActivitiesSectionProps> = ({ activities, currentAttendee }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDept, setSelectedDept] = useState('ทั้งหมด');
 
@@ -140,17 +141,41 @@ export const ActivitiesSection: React.FC<ActivitiesSectionProps> = ({ activities
               </div>
 
               {/* Action Link Button */}
-              {act.registerUrl && act.registerUrl.trim() !== '' && act.registerUrl.trim() !== '-' && (
-                <a
-                  href={act.registerUrl.startsWith('http') ? act.registerUrl : `https://${act.registerUrl}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>ลงทะเบียนเข้าร่วมแข่งขัน</span>
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              )}
+              {act.registerUrl && act.registerUrl.trim() !== '' && act.registerUrl.trim() !== '-' && (() => {
+                const isStudent = currentAttendee && currentAttendee.status === 'นักเรียน';
+
+                if (isStudent) {
+                  return (
+                    <a
+                      href={act.registerUrl.startsWith('http') ? act.registerUrl : `https://${act.registerUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full mt-2 py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-orange-500 hover:to-amber-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>ลงทะเบียนเข้าร่วมแข่งขัน</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  );
+                }
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!currentAttendee) {
+                        alert('🔒 ขออภัย ระบบเปิดรับลงทะเบียนแข่งขันเฉพาะผู้ใช้ในสถานะ "นักเรียน" เท่านั้น\n\nกรุณาลงทะเบียนและเข้าสู่ระบบในสถานะ "นักเรียน" เพื่อใช้งานลิงก์สมัครแข่งขัน');
+                      } else {
+                        alert(`🔒 ขออภัย ระบบเปิดรับลงทะเบียนแข่งขันเฉพาะผู้ใช้ในสถานะ "นักเรียน" เท่านั้น\n\nสถานะบัญชีปัจจุบันของคุณคือ: "${currentAttendee.status}"`);
+                      }
+                    }}
+                    className="w-full mt-2 py-2.5 px-4 bg-slate-100 hover:bg-amber-50 text-slate-500 hover:text-amber-800 font-semibold text-xs sm:text-sm rounded-xl border border-slate-200 hover:border-amber-300 transition-all flex items-center justify-center gap-2 cursor-pointer group"
+                    title="สงวนสิทธิ์ลงทะเบียนแข่งขันเฉพาะผู้ลงทะเบียนสถานะนักเรียนเท่านั้น"
+                  >
+                    <Lock className="w-4 h-4 text-slate-400 group-hover:text-amber-600" />
+                    <span>ลงทะเบียนแข่งขัน (เฉพาะนักเรียน)</span>
+                  </button>
+                );
+              })()}
             </div>
           ))}
         </div>

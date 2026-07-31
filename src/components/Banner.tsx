@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Search, FileText, Download } from 'lucide-react';
+import { Sparkles, Search, FileText, Download, Building2 } from 'lucide-react';
 
-export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterClick }) => {
+export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: () => void }> = ({ onRegisterClick, onOpenOrgModal }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
@@ -163,12 +163,12 @@ export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterCl
           </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto shrink-0">
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0">
           <a
             href="https://drive.google.com/file/d/15bBeF8VnE4SvJ7eHMNuENl93ea7nMDgT/view?usp=sharing"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-blue-400/30"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-blue-400/30"
           >
             <FileText className="w-4 h-4 text-blue-200" />
             <span>ดาวน์โหลดกำหนดการ (PDF)</span>
@@ -176,11 +176,21 @@ export const Banner: React.FC<{ onRegisterClick: () => void }> = ({ onRegisterCl
 
           <button
             onClick={onRegisterClick}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30"
           >
             <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
-            <span>ลงทะเบียนเข้าร่วมงานด่วน</span>
+            <span>ลงทะเบียนบุคคลทั่วไป</span>
           </button>
+
+          {onOpenOrgModal && (
+            <button
+              onClick={onOpenOrgModal}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:via-fuchsia-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-purple-500/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-purple-300/40"
+            >
+              <Building2 className="w-4 h-4 text-purple-100" />
+              <span>ลงทะเบียนสำหรับหน่วยงาน</span>
+            </button>
+          )}
         </div>
       </div>
     </section>

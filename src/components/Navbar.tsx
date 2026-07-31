@@ -1,26 +1,29 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy } from 'lucide-react';
+import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, Building2 } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;
   currentAdmin: AdminUser | null;
-  onOpenLogin: () => void;
+  onOpenLogin: (initialTab?: 'admin' | 'user') => void;
   onOpenUserLogin?: () => void;
+  onOpenAdminLogin?: () => void;
   onOpenProfile: () => void;
   onOpenAdminDashboard: () => void;
   onLogout: () => void;
-  onRegisterClick: () => void;
+  onRegisterClick?: () => void;
+  onOpenOrgModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentAttendee,
   currentAdmin,
   onOpenLogin,
+  onOpenUserLogin,
+  onOpenAdminLogin,
   onOpenProfile,
   onOpenAdminDashboard,
   onLogout,
-  onRegisterClick,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -136,20 +139,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
                 <button
-                  onClick={onRegisterClick}
-                  className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-3.5 lg:px-4.5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <UserCheck className="w-4 h-4 text-white shrink-0" />
-                  <span className="whitespace-nowrap">ลงทะเบียนเข้าร่วมงาน</span>
-                </button>
-
-                <button
-                  onClick={onOpenLogin}
-                  title="เข้าสู่ระบบ"
+                  onClick={() => onOpenUserLogin ? onOpenUserLogin() : onOpenLogin('user')}
+                  title="เข้าสู่ระบบสำหรับผู้เข้าร่วมงานทั่วไป"
                   className="flex items-center gap-1.5 text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 px-3.5 lg:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-blue-500/25 cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 border border-blue-400/30 whitespace-nowrap shrink-0"
                 >
                   <LogIn className="w-4 h-4 text-blue-100 shrink-0" />
-                  <span className="whitespace-nowrap">เข้าสู่ระบบ</span>
+                  <span className="whitespace-nowrap">เข้าสู่ระบบผู้ใช้ทั่วไป</span>
+                </button>
+
+                <button
+                  onClick={() => onOpenAdminLogin ? onOpenAdminLogin() : onOpenLogin('admin')}
+                  title="เข้าสู่ระบบสำหรับผู้ดูแลระบบ / เจ้าหน้าที่"
+                  className="flex items-center gap-1.5 text-amber-300 bg-slate-900 hover:bg-slate-800 border border-slate-700 px-3.5 lg:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md cursor-pointer transition-all transform hover:scale-[1.02] active:scale-95 whitespace-nowrap shrink-0"
+                >
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="whitespace-nowrap">เข้าสู่ระบบ Admin</span>
                 </button>
               </div>
             )}
@@ -239,22 +243,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    onRegisterClick();
-                  }}
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-base rounded-xl shadow-md flex items-center justify-center gap-2 whitespace-nowrap"
-                >
-                  <UserCheck className="w-5 h-5 shrink-0" />
-                  <span className="whitespace-nowrap">ลงทะเบียนเข้าร่วมงาน</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onOpenLogin();
+                    if (onOpenUserLogin) onOpenUserLogin();
+                    else onOpenLogin('user');
                   }}
                   className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-98 cursor-pointer whitespace-nowrap"
                 >
                   <LogIn className="w-4 h-4 text-blue-100 shrink-0" />
-                  <span className="whitespace-nowrap">เข้าสู่ระบบ</span>
+                  <span className="whitespace-nowrap">เข้าสู่ระบบผู้ใช้ทั่วไป</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (onOpenAdminLogin) onOpenAdminLogin();
+                    else onOpenLogin('admin');
+                  }}
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-sm rounded-xl border border-slate-700 shadow-md flex items-center justify-center gap-2 transition-transform active:scale-98 cursor-pointer whitespace-nowrap"
+                >
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="whitespace-nowrap">เข้าสู่ระบบ Admin</span>
                 </button>
               </div>
             )}

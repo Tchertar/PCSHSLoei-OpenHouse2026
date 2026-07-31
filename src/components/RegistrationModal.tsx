@@ -267,7 +267,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
             </div>
             <div>
               <h3 className="text-base sm:text-2xl font-bold text-white leading-tight">
-                ลงทะเบียนเข้าร่วม PCSHS Loei Open House 2026
+                ลงทะเบียนสำหรับบุคคลทั่วไป
               </h3>
               <p className="text-[11px] sm:text-sm text-blue-300 mt-0.5">
                 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (28 สิงหาคม 2569)
@@ -278,6 +278,12 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+          {/* Important Registration Notice */}
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs sm:text-sm font-semibold flex items-center gap-2">
+            <span className="text-amber-600 shrink-0">⚠️</span>
+            <span>หากลงทะเบียนใน QR Code ที่ได้รับในหนังสือเชิญแล้ว ไม่ต้องลงทะเบียนซ้ำ</span>
+          </div>
+
           <form onSubmit={handleFormSubmit} className="space-y-3.5 sm:space-y-4 text-left">
             {formError && (
               <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
@@ -456,45 +462,6 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                       {p}
                     </option>
                   ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Attendee Count & Transport */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  จำนวนผู้เข้าร่วม (คน) <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  required
-                  value={formData.attendeeCount}
-                  onChange={(e) =>
-                    setFormData({ ...formData, attendeeCount: Math.max(1, parseInt(e.target.value) || 1) })
-                  }
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  วิธีการเดินทาง <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.transportMethod}
-                  onChange={(e) =>
-                    setFormData({ ...formData, transportMethod: e.target.value as TransportMethod })
-                  }
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                >
-                  <option value="รถส่วนตัว">รถส่วนตัว</option>
-                  <option value="รถบัสโรงเรียน">รถบัสโรงเรียน</option>
-                  <option value="รถตู้สถาบัน">รถตู้สถาบัน</option>
-                  <option value="รถสาธารณะ">รถสาธารณะ</option>
-                  <option value="อื่นๆ">อื่นๆ</option>
                 </select>
               </div>
             </div>

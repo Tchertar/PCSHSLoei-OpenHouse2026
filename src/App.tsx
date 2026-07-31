@@ -37,7 +37,8 @@ import {
   subscribeSchedules,
 } from './lib/firebase';
 
-import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield } from 'lucide-react';
+import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
+import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2 } from 'lucide-react';
 
 const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
   {
@@ -158,10 +159,22 @@ export default function App() {
 
   // Modal Controls State
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [loginInitialTab, setLoginInitialTab] = useState<'admin' | 'user'>('user');
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
+
+  const handleOpenUserLogin = () => {
+    setLoginInitialTab('user');
+    setIsLoginOpen(true);
+  };
+
+  const handleOpenAdminLogin = () => {
+    setLoginInitialTab('admin');
+    setIsLoginOpen(true);
+  };
 
   // Google OAuth States
   const [isAccountChooserOpen, setIsAccountChooserOpen] = useState(false);
@@ -302,15 +315,22 @@ export default function App() {
         <Navbar
           currentAttendee={currentAttendee}
           currentAdmin={currentAdmin}
-          onOpenLogin={() => setIsLoginOpen(true)}
+          onOpenLogin={(tab) => {
+            if (tab) setLoginInitialTab(tab);
+            setIsLoginOpen(true);
+          }}
+          onOpenUserLogin={handleOpenUserLogin}
+          onOpenAdminLogin={handleOpenAdminLogin}
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
           onLogout={handleLogout}
-          onRegisterClick={() => setIsRegisterOpen(true)}
         />
 
         {/* Hero Full-width Banner */}
-        <Banner onRegisterClick={() => setIsRegisterOpen(true)} />
+        <Banner
+          onRegisterClick={() => setIsRegisterOpen(true)}
+          onOpenOrgModal={() => setIsOrgModalOpen(true)}
+        />
 
         {/* Live Event Countdown Timer */}
         <CountdownTimer />
@@ -350,11 +370,20 @@ export default function App() {
                 {/* Standard Registration Button */}
                 <button
                   onClick={() => setIsRegisterOpen(true)}
-                  className="w-full sm:w-auto px-10 py-5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-lg sm:text-xl rounded-2xl shadow-2xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-3 group border border-orange-400/40 animate-pulse-glow"
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 group border border-orange-400/40"
                 >
-                  <Sparkles className="w-6 h-6 text-amber-200" />
-                  <span>ลงทะเบียนเข้าร่วมงาน (สร้างบัญชีผู้ใช้)</span>
-                  <ArrowRight className="w-6 h-6 transition-transform group-hover:translate-x-1" />
+                  <Sparkles className="w-5 h-5 text-amber-200" />
+                  <span>ลงทะเบียนสำหรับบุคคลทั่วไป</span>
+                  <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                </button>
+
+                {/* Organization Registration Button */}
+                <button
+                  onClick={() => setIsOrgModalOpen(true)}
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:via-fuchsia-700 hover:to-purple-800 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-purple-500/40 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 border border-purple-300/40"
+                >
+                  <Building2 className="w-5 h-5 text-purple-100" />
+                  <span>ลงทะเบียนสำหรับหน่วยงาน</span>
                 </button>
               </div>
             )}
@@ -362,7 +391,7 @@ export default function App() {
         </section>
 
         {/* Dynamic Activities Section */}
-        <ActivitiesSection activities={activities} />
+        <ActivitiesSection activities={activities} currentAttendee={currentAttendee} />
 
         {/* Venue Map Section */}
         <MapSection />
@@ -394,6 +423,12 @@ export default function App() {
         onRegisterSuccess={handleRegisterSuccess}
       />
 
+      {/* Organization Registration Notice Modal */}
+      <OrgRegistrationNoticeModal
+        isOpen={isOrgModalOpen}
+        onClose={() => setIsOrgModalOpen(false)}
+      />
+
       {/* Google Account Chooser Popup Modal */}
       <GoogleAccountChooserModal
         isOpen={isAccountChooserOpen}
@@ -421,6 +456,7 @@ export default function App() {
         onClose={() => setIsLoginOpen(false)}
         adminsList={admins}
         attendeesList={attendees}
+        initialTab={loginInitialTab}
         onAdminLoginSuccess={handleAdminLoginSuccess}
         onAttendeeLoginSuccess={handleAttendeeLoginSuccess}
       />

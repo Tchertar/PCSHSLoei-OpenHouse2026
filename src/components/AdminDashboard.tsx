@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { ActivityItem, AdminRole, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
 import {
@@ -317,6 +317,128 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return a;
     });
     setAttendees(updated);
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Import Attendees from .xlsx or .csv Excel file
+  const handleImportXLSX = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const firstSheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[firstSheetName];
+
+        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+
+        if (!rawData || rawData.length === 0) {
+          alert('❌ ไม่พบข้อมูลในไฟล์ Excel ที่เลือก');
+          return;
+        }
+
+        const newAttendees: Attendee[] = [];
+        let skippedCount = 0;
+
+        rawData.forEach((row, idx) => {
+          const getValue = (...keys: string[]) => {
+            for (const key of keys) {
+              const matchedKey = Object.keys(row).find(
+                (k) => k.trim().toLowerCase() === key.trim().toLowerCase() || k.includes(key)
+              );
+              if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null) {
+                return String(row[matchedKey]).trim();
+              }
+            }
+            return '';
+          };
+
+          let firstName = getValue('ชื่อ', 'firstName', 'first_name', 'First Name', 'ชื่อจริง');
+          let lastName = getValue('นามสกุล', 'lastName', 'last_name', 'Last Name');
+
+          const fullName = getValue('ชื่อ - นามสกุล', 'ชื่อ-นามสกุล', 'ชื่อ นามสกุล', 'Name', 'Full Name');
+          if ((!firstName || !lastName) && fullName) {
+            const parts = fullName.split(/\s+/);
+            firstName = firstName || parts[0] || '';
+            lastName = lastName || parts.slice(1).join(' ') || '';
+          }
+
+          if (!firstName) {
+            skippedCount++;
+            return;
+          }
+
+          const email = getValue('อีเมล', 'email', 'Email', 'E-mail') || `user_${Date.now()}_${idx}@pcshsloei.ac.th`;
+          const phone = getValue('เบอร์โทร', 'เบอร์โทรศัพท์', 'phone', 'Phone', 'tel', 'Tel') || '0800000000';
+          const organization = getValue('หน่วยงาน', 'สถาบัน', 'โรงเรียน', 'หน่วยงาน / สถาบัน', 'organization', 'school') || 'ไม่ระบุสถาบัน';
+          const district = getValue('อำเภอ', 'เขต', 'อำเภอ / เขต', 'district') || 'เมือง';
+          const province = getValue('จังหวัด', 'province') || 'เลย';
+          const statusRaw = getValue('สถานภาพ', 'สถานะ', 'status', 'Role') as any;
+          const status = ['ครู/อาจารย์', 'ผู้ปกครอง', 'บุคคลทั่วไป', 'นักเรียน'].includes(statusRaw)
+            ? statusRaw
+            : 'บุคคลทั่วไป';
+
+          const attendeeCountRaw = parseInt(getValue('จำนวนผู้ร่วมงาน', 'จำนวน', 'attendeeCount', 'count')) || 1;
+          const transportRaw = getValue('วิธีการเดินทาง', 'การเดินทาง', 'transportMethod') as any;
+          const transportMethod = ['รถส่วนตัว', 'รถบัสโรงเรียน', 'รถตู้สถาบัน', 'รถสาธารณะ', 'อื่นๆ'].includes(transportRaw)
+            ? transportRaw
+            : 'รถส่วนตัว';
+
+          let participantCode = getValue('รหัสประจำตัว', 'รหัส', 'participantCode', 'code');
+          if (!participantCode) {
+            const randomCode = Math.floor(1000 + Math.random() * 9000);
+            participantCode = `PCSHS2026-${randomCode}`;
+          }
+
+          const id = `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`;
+          const registeredAt = new Date().toLocaleString('th-TH');
+
+          const newAttendee: Attendee = {
+            id,
+            participantCode,
+            email,
+            password: phone,
+            firstName,
+            lastName,
+            phone,
+            status,
+            organization,
+            district,
+            province,
+            attendeeCount: attendeeCountRaw,
+            transportMethod,
+            registeredAt,
+            checkedIn: false,
+            qrCodeData: participantCode,
+          };
+
+          newAttendees.push(newAttendee);
+          saveAttendeeToFirestore(newAttendee);
+        });
+
+        if (newAttendees.length > 0) {
+          setAttendees((prev) => [...prev, ...newAttendees]);
+          addAuditLog(
+            'นำเข้าข้อมูล',
+            `นำเข้าข้อมูลผู้ลงทะเบียนสำเร็จจำนวน ${newAttendees.length} รายการจากไฟล์ Excel (.xlsx)`
+          );
+          alert(`✅ นำเข้าข้อมูลผู้ลงทะเบียนสำเร็จจำนวน ${newAttendees.length} รายการ${skippedCount > 0 ? ` (ข้าม ${skippedCount} รายการที่ไม่สมบูรณ์)` : ''}`);
+        } else {
+          alert('⚠️ ไม่พบรายการข้อมูลที่สมบูรณ์ในไฟล์ Excel');
+        }
+      } catch (err) {
+        console.error('Error importing Excel:', err);
+        alert('❌ เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์และลองใหม่อีกครั้ง');
+      } finally {
+        if (e.target) e.target.value = '';
+      }
+    };
+
+    reader.readAsBinaryString(file);
   };
 
   // Export Attendees to XLSX Excel file excluding passwords
@@ -1200,13 +1322,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
 
-                <button
-                  onClick={handleExportXLSX}
-                  className="w-full sm:w-auto px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>Export ข้อมูลผู้เข้าร่วม (.XLSX)</span>
-                </button>
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImportXLSX}
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    title="นำเข้าข้อมูลผู้ลงทะเบียนจากไฟล์ Excel (.xlsx / .csv)"
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-purple-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2 border border-purple-300/30"
+                  >
+                    <FileUp className="w-4 h-4 text-purple-100" />
+                    <span>นำเข้าข้อมูล (.XLSX)</span>
+                  </button>
+
+                  <button
+                    onClick={handleExportXLSX}
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Export ข้อมูลผู้เข้าร่วม (.XLSX)</span>
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
