@@ -9,8 +9,7 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
   const [imgSrc, setImgSrc] = useState('https://lh3.googleusercontent.com/d/1Krk3TbqazkWZOx-XTLRXTuIrBu45rX0-');
   const [isTouchDevice, setIsTouchDevice] = useState(false);
 
-  const REGISTRATION_START_DATE = new Date('2026-08-05T00:00:00');
-  const isRegistrationOpen = new Date() >= REGISTRATION_START_DATE;
+  const isRegistrationOpen = false;
 
   // Smooth Parallax tilt & translation state
   const [tilt, setTilt] = useState({ rotX: 0, rotY: 0, transX: 0, transY: 0 });
@@ -179,34 +178,23 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
 
           <button
             onClick={onRegisterClick}
-            disabled={!isRegistrationOpen}
-            title={!isRegistrationOpen ? 'ระบบลงทะเบียนสำหรับบุคคลทั่วไปจะเปิดในวันที่ 5 สิงหาคม 2569' : 'ลงทะเบียนบุคคลทั่วไป'}
-            className={
-              isRegistrationOpen
-                ? 'w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-amber-400/30'
-                : 'w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 text-slate-400 font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-80'
-            }
+            disabled={true}
+            title="ปิดรับการลงทะเบียนบุคคลทั่วไปออนไลน์แล้ว"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 text-slate-400 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-85"
           >
-            {isRegistrationOpen ? (
-              <>
-                <Sparkles className="w-4 h-4 text-amber-200 animate-pulse" />
-                <span>ลงทะเบียนบุคคลทั่วไป</span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-4 h-4 text-slate-400" />
-                <span>ลงทะเบียนบุคคลทั่วไป (เปิด 5 ส.ค. 69)</span>
-              </>
-            )}
+            <Lock className="w-4 h-4 text-slate-400" />
+            <span>ปิดรับการลงทะเบียนบุคคลทั่วไปแล้ว</span>
           </button>
 
           {onOpenOrgModal && (
             <button
               onClick={onOpenOrgModal}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:via-fuchsia-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md hover:shadow-purple-500/30 transition-all hover:scale-105 active:scale-95 cursor-pointer border border-purple-300/40"
+              disabled={true}
+              title="ปิดรับการลงทะเบียนสำหรับหน่วยงานออนไลน์แล้ว"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800/90 text-slate-400 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-85"
             >
-              <Building2 className="w-4 h-4 text-purple-100" />
-              <span>ลงทะเบียนสำหรับหน่วยงาน</span>
+              <Lock className="w-4 h-4 text-slate-400" />
+              <span>ปิดรับการลงทะเบียนหน่วยงานแล้ว</span>
             </button>
           )}
         </div>

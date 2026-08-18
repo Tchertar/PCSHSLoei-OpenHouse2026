@@ -38,7 +38,7 @@ import {
 } from './lib/firebase';
 
 import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
-import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2, Lock } from 'lucide-react';
+import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2, Lock, LogIn } from 'lucide-react';
 
 const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
   {
@@ -166,13 +166,10 @@ export default function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
 
-  const REGISTRATION_START_DATE = new Date('2026-08-05T00:00:00');
-  const isRegistrationOpen = new Date() >= REGISTRATION_START_DATE;
+  const isRegistrationOpen = false;
 
   const handleGeneralRegisterClick = () => {
-    if (isRegistrationOpen) {
-      setIsRegisterOpen(true);
-    }
+    alert('ระบบปิดรับการลงทะเบียนออนไลน์เรียบร้อยแล้ว\n\nหากท่านได้ลงทะเบียนไว้แล้ว สามารถกดปุ่ม "เข้าสู่ระบบ" เพื่อดูบัตรประจำตัวผู้เข้าร่วมงานได้');
   };
 
   const handleOpenUserLogin = () => {
@@ -349,9 +346,9 @@ export default function App() {
           <div className="bg-white/90 border border-slate-200/80 rounded-3xl p-8 sm:p-12 shadow-xl backdrop-blur-xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-orange-400/10 rounded-full blur-3xl" />
 
-            <span className="inline-flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs sm:text-sm px-4 py-1.5 rounded-full mb-4">
-              <Sparkles className="w-4 h-4 text-orange-500" />
-              <span>เปิดระบบลงทะเบียนเข้าร่วมงานออนไลน์แล้ววันนี้</span>
+            <span className="inline-flex items-center gap-2 bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs sm:text-sm px-4 py-1.5 rounded-full mb-4">
+              <Lock className="w-4 h-4 text-slate-500" />
+              <span>ปิดรับการลงทะเบียนออนไลน์ทุกช่องทางแล้ว</span>
             </span>
 
             <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight flex flex-col items-center justify-center gap-1 sm:gap-2">
@@ -361,7 +358,7 @@ export default function App() {
 
             <div className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto mb-8 leading-relaxed flex flex-col items-center justify-center gap-1 font-medium">
               <span>Academic - Challenge - Innovation Expo</span>
-              <span>จุดประกายความคิด บ่มเพาะนักวิทย์รุ่นเยาว์</span>
+              <span>สำหรับผู้ที่มีข้อมูลในระบบแล้ว สามารถเข้าสู่ระบบเพื่อดูบัตรประจำตัวและ QR Code เข้างาน</span>
             </div>
 
             {currentAttendee ? (
@@ -375,39 +372,35 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                {/* Standard Registration Button */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 flex-wrap">
+                {/* Prominent Login Button for Registered Attendees */}
                 <button
-                  onClick={handleGeneralRegisterClick}
-                  disabled={!isRegistrationOpen}
-                  title={!isRegistrationOpen ? 'ระบบลงทะเบียนสำหรับบุคคลทั่วไปจะเปิดในวันที่ 5 สิงหาคม 2569' : 'ลงทะเบียนสำหรับบุคคลทั่วไป'}
-                  className={
-                    isRegistrationOpen
-                      ? 'w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-orange-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 group border border-orange-400/40'
-                      : 'w-full sm:w-auto px-8 py-4 bg-slate-200/90 text-slate-500 font-extrabold text-base sm:text-lg rounded-2xl shadow-none cursor-not-allowed border border-slate-300 flex items-center justify-center gap-2.5'
-                  }
+                  onClick={handleOpenUserLogin}
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-blue-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 border border-blue-400/40"
                 >
-                  {isRegistrationOpen ? (
-                    <>
-                      <Sparkles className="w-5 h-5 text-amber-200" />
-                      <span>ลงทะเบียนสำหรับบุคคลทั่วไป</span>
-                      <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="w-5 h-5 text-slate-400" />
-                      <span>ลงทะเบียนสำหรับบุคคลทั่วไป (เปิดรับ 5 ส.ค. 69)</span>
-                    </>
-                  )}
+                  <LogIn className="w-5 h-5 text-blue-200" />
+                  <span>เข้าสู่ระบบเพื่อดูบัตรประจำตัว</span>
+                  <ArrowRight className="w-5 h-5" />
                 </button>
 
-                {/* Organization Registration Button */}
+                {/* Closed Standard Registration Button */}
                 <button
-                  onClick={() => setIsOrgModalOpen(true)}
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:via-fuchsia-700 hover:to-purple-800 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-purple-500/40 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 border border-purple-300/40"
+                  disabled={true}
+                  title="ระบบปิดรับการลงทะเบียนออนไลน์แล้ว"
+                  className="w-full sm:w-auto px-6 py-4 bg-slate-100 text-slate-400 font-bold text-sm sm:text-base rounded-2xl shadow-none cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2"
                 >
-                  <Building2 className="w-5 h-5 text-purple-100" />
-                  <span>ลงทะเบียนสำหรับหน่วยงาน</span>
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span>ปิดรับการลงทะเบียนบุคคลทั่วไปแล้ว</span>
+                </button>
+
+                {/* Closed Organization Registration Button */}
+                <button
+                  disabled={true}
+                  title="ระบบปิดรับการลงทะเบียนหน่วยงานแล้ว"
+                  className="w-full sm:w-auto px-6 py-4 bg-slate-100 text-slate-400 font-bold text-sm sm:text-base rounded-2xl shadow-none cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span>ปิดรับการลงทะเบียนหน่วยงานแล้ว</span>
                 </button>
               </div>
             )}

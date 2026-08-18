@@ -192,6 +192,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [superAdminPasswordError, setSuperAdminPasswordError] = useState('');
   const [showSuperAdminPassword, setShowSuperAdminPassword] = useState(false);
 
+  // Add Attendee (Admin Manual Entry) state
+  const [showAddAttendeeModal, setShowAddAttendeeModal] = useState(false);
+  const [addAttendeeForm, setAddAttendeeForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    status: 'นักเรียน' as Attendee['status'],
+    organization: '',
+    province: 'เลย',
+    district: 'เมืองเลย',
+    attendeeCount: 1,
+    transportMethod: 'รถส่วนตัว' as Attendee['transportMethod'],
+    password: '',
+  });
+  const [addAttendeeError, setAddAttendeeError] = useState('');
+  const [isSavingAttendee, setIsSavingAttendee] = useState(false);
+
   // Firebase Connection Test state
   const [isTestingFirebase, setIsTestingFirebase] = useState(false);
   const [firebaseTestResult, setFirebaseTestResult] = useState<FirebaseConnectionTestResult | null>(null);
@@ -317,6 +335,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return a;
     });
     setAttendees(updated);
+  };
+
+  // Add Attendee manually by Admin
+  const handleAddAttendeeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddAttendeeError('');
+    if (!addAttendeeForm.firstName.trim() || !addAttendeeForm.lastName.trim()) {
+      setAddAttendeeError('กรุณากรอกชื่อและนามสกุล');
+      return;
+    }
+    if (!addAttendeeForm.organization.trim()) {
+      setAddAttendeeError('กรุณากรอกสถาบัน / โรงเรียน / หน่วยงาน');
+      return;
+    }
+
+    setIsSavingAttendee(true);
+    try {
+      const codeNum = Math.floor(1000 + Math.random() * 9000);
+      const participantCode = `PCSHS2026-${codeNum}`;
+      const emailVal = addAttendeeForm.email.trim() || `user_${codeNum}@pcshs-loei.ac.th`;
+      const passVal = addAttendeeForm.password.trim() || (addAttendeeForm.phone.replace(/\D/g, '') || '123456');
+
+      const newAtt: Attendee = {
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        participantCode,
+        email: emailVal,
+        password: passVal,
+        isVerified: true,
+        firstName: addAttendeeForm.firstName.trim(),
+        lastName: addAttendeeForm.lastName.trim(),
+        phone: addAttendeeForm.phone.trim() || '-',
+        status: addAttendeeForm.status,
+        organization: addAttendeeForm.organization.trim(),
+        district: addAttendeeForm.district.trim() || 'เมืองเลย',
+        province: addAttendeeForm.province || 'เลย',
+        attendeeCount: Number(addAttendeeForm.attendeeCount) || 1,
+        transportMethod: addAttendeeForm.transportMethod || 'รถส่วนตัว',
+        registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        checkedIn: false,
+        qrCodeData: participantCode,
+        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(addAttendeeForm.firstName)}+${encodeURIComponent(addAttendeeForm.lastName)}&background=0D8ABC&color=fff&bold=true`,
+      };
+
+      await saveAttendeeToFirestore(newAtt);
+      setAttendees((prev) => [newAtt, ...prev]);
+      addAuditLog(
+        'เพิ่มผู้ลงทะเบียนใหม่ (โดยแอดมิน)',
+        `แอดมิน ${currentAdmin.name} เพิ่มผู้เข้าร่วม ${newAtt.participantCode} (${newAtt.firstName} ${newAtt.lastName}) สำเร็จ`
+      );
+
+      setShowAddAttendeeModal(false);
+      setAddAttendeeForm({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        status: 'นักเรียน',
+        organization: '',
+        province: 'เลย',
+        district: 'เมืองเลย',
+        attendeeCount: 1,
+        transportMethod: 'รถส่วนตัว',
+        password: '',
+      });
+      alert(`✅ เพิ่มผู้ลงทะเบียนสำเร็จ!\n\nรหัสประจำตัว: ${newAtt.participantCode}\nชื่อ: ${newAtt.firstName} ${newAtt.lastName}`);
+    } catch (err: any) {
+      console.error('Error adding attendee:', err);
+      setAddAttendeeError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+    } finally {
+      setIsSavingAttendee(false);
+    }
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1323,6 +1412,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
 
                 <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+                  <button
+                    onClick={() => {
+                      setAddAttendeeError('');
+                      setShowAddAttendeeModal(true);
+                    }}
+                    title="เพิ่มข้อมูลผู้ลงทะเบียนรายบุคคลโดยแอดมิน"
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-orange-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-orange-400/30"
+                  >
+                    <Plus className="w-4 h-4 text-amber-200" />
+                    <span>เพิ่มผู้ลงทะเบียน</span>
+                  </button>
+
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -2743,6 +2844,237 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ปิดหน้าต่าง
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Attendee Modal (Admin Manual Entry) */}
+      {showAddAttendeeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-scale-up">
+            {/* Modal Header */}
+            <div className="shrink-0 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <UserCheck className="w-5 h-5 text-amber-200" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg leading-tight">
+                    เพิ่มข้อมูลผู้ลงทะเบียน (แอดมิน)
+                  </h3>
+                  <p className="text-xs text-amber-100">
+                    บันทึกข้อมูลผู้เข้าร่วมงานเข้าระบบโดยตรง พร้อมสร้างรหัสและ QR Code
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddAttendeeModal(false)}
+                className="p-2 text-amber-100 hover:text-white rounded-full bg-black/15 hover:bg-black/30 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleAddAttendeeSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-4 text-left">
+              {addAttendeeError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <span>{addAttendeeError}</span>
+                </div>
+              )}
+
+              {/* Name Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชื่อจริง <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addAttendeeForm.firstName}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, firstName: e.target.value })}
+                    placeholder="เช่น สมชาย"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    นามสกุล <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addAttendeeForm.lastName}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, lastName: e.target.value })}
+                    placeholder="เช่น ใจดี"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Organization & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    สถาบัน / โรงเรียน / หน่วยงาน <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={addAttendeeForm.organization}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, organization: e.target.value })}
+                    placeholder="เช่น โรงเรียนเลยพิทยาคม"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    สถานภาพ <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={addAttendeeForm.status}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, status: e.target.value as any })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="นักเรียน">นักเรียน</option>
+                    <option value="ครู-อาจารย์">ครู-อาจารย์</option>
+                    <option value="ผู้ปกครอง">ผู้ปกครอง</option>
+                    <option value="ประชาชนทั่วไป">ประชาชนทั่วไป</option>
+                    <option value="หน่วยงานภายนอก">หน่วยงานภายนอก</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Phone & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    เบอร์โทรศัพท์ (ใช้เป็นรหัสผ่านเข้าสู่ระบบ)
+                  </label>
+                  <input
+                    type="tel"
+                    value={addAttendeeForm.phone}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, phone: e.target.value })}
+                    placeholder="0812345678"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    อีเมล (ไม่ระบุจะสร้างให้อัตโนมัติ)
+                  </label>
+                  <input
+                    type="email"
+                    value={addAttendeeForm.email}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, email: e.target.value })}
+                    placeholder="user@example.com"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Province, District & Attendee Count */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    จังหวัด
+                  </label>
+                  <input
+                    type="text"
+                    value={addAttendeeForm.province}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, province: e.target.value })}
+                    placeholder="เลย"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    อำเภอ
+                  </label>
+                  <input
+                    type="text"
+                    value={addAttendeeForm.district}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, district: e.target.value })}
+                    placeholder="เมืองเลย"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    จำนวนผู้ร่วม (คน)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={addAttendeeForm.attendeeCount}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, attendeeCount: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Transport & Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    วิธีการเดินทาง
+                  </label>
+                  <select
+                    value={addAttendeeForm.transportMethod}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, transportMethod: e.target.value as any })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  >
+                    <option value="รถส่วนตัว">รถส่วนตัว</option>
+                    <option value="รถตู้/รถบัสโรงเรียน">รถตู้/รถบัสโรงเรียน</option>
+                    <option value="รถโดยสารประจำทาง">รถโดยสารประจำทาง</option>
+                    <option value="อื่นๆ">อื่นๆ</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    กำหนดรหัสผ่านเข้าสู่ระบบ (ถ้าไม่ใส่จะใช้เบอร์โทรหรือ 123456)
+                  </label>
+                  <input
+                    type="text"
+                    value={addAttendeeForm.password}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, password: e.target.value })}
+                    placeholder="กำหนดรหัสผ่าน"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddAttendeeModal(false)}
+                  className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingAttendee}
+                  className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg hover:shadow-orange-500/30 transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2 border border-orange-400/30"
+                >
+                  {isSavingAttendee ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>บันทึกข้อมูลผู้ลงทะเบียน</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
