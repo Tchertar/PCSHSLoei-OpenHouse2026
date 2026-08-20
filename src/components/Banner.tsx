@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, Search, FileText, Download, Building2, Lock } from 'lucide-react';
+import { BannerCountdown } from './BannerCountdown';
 
 export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: () => void }> = ({ onRegisterClick, onOpenOrgModal }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,6 +115,11 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
               );
             }}
           />
+
+          {/* Locked Banner Countdown Timer (Top-Left Area matching red outline with clean white background) */}
+          <div className="absolute top-2 left-2 sm:top-4 sm:left-4 md:top-5 md:left-5 z-30 pointer-events-auto">
+            <BannerCountdown />
+          </div>
         </div>
 
         {/* FRAMELESS MAGNIFYING LENS OVERLAY (ไม่มีกรอบ) */}

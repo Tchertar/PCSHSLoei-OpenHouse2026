@@ -1,35 +1,34 @@
 import React, { useEffect, useRef } from 'react';
 
-interface StardustParticle {
+interface TrailPoint {
+  x: number;
+  y: number;
+  alpha: number;
+}
+
+interface PaperAirplane {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  size: number;
-  color: string;
+  angle: number;
+  speed: number;
+  scale: number;
   alpha: number;
   life: number;
   maxLife: number;
-  rotation: number;
-  rotSpeed: number;
-  points: number;
-  twinkleSpeed: number;
-  type: 'star4' | 'star5' | 'glitter' | 'spark';
-}
-
-interface CosmicRing {
-  x: number;
-  y: number;
-  radius: number;
-  maxRadius: number;
-  alpha: number;
-  color: string;
+  curveFactor: number;
+  wingColor: string;
+  shadowColor: string;
+  accentColor: string;
+  trail: TrailPoint[];
+  wobblePhase: number;
+  wobbleSpeed: number;
 }
 
 export const ClickEffectCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const particlesRef = useRef<StardustParticle[]>([]);
-  const ringsRef = useRef<CosmicRing[]>([]);
+  const planesRef = useRef<PaperAirplane[]>([]);
   const animFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -42,16 +41,38 @@ export const ClickEffectCanvas: React.FC = () => {
     handleResize();
     window.addEventListener('resize', handleResize);
 
-    // Cosmic stardust color palette
-    const stardustColors = [
-      '#FBBF24', // Gold
-      '#F59E0B', // Amber
-      '#38BDF8', // Starlight Cyan
-      '#C084FC', // Nebula Purple
-      '#E879F9', // Cosmic Pink
-      '#F43F5E', // Nova Red
-      '#34D399', // Emerald Dust
-      '#FFFFFF', // Pure White Star
+    // Color palettes for paper airplanes (Clean White, Sky Blue, Warm Orange, Pastel Lavender, Golden Glow)
+    const planeVariants = [
+      {
+        wing: '#FFFFFF',
+        shadow: '#E2E8F0',
+        accent: '#3B82F6',
+        trail: 'rgba(59, 130, 246, 0.4)',
+      },
+      {
+        wing: '#FFFFFF',
+        shadow: '#CBD5E1',
+        accent: '#F97316',
+        trail: 'rgba(249, 115, 22, 0.4)',
+      },
+      {
+        wing: '#F0F9FF',
+        shadow: '#BAE6FD',
+        accent: '#0284C7',
+        trail: 'rgba(2, 132, 199, 0.4)',
+      },
+      {
+        wing: '#FFFBEB',
+        shadow: '#FDE68A',
+        accent: '#F59E0B',
+        trail: 'rgba(245, 158, 11, 0.4)',
+      },
+      {
+        wing: '#FAF5FF',
+        shadow: '#E9D5FF',
+        accent: '#9333EA',
+        trail: 'rgba(147, 51, 234, 0.4)',
+      },
     ];
 
     const handlePointerDown = (e: MouseEvent | TouchEvent) => {
@@ -65,47 +86,37 @@ export const ClickEffectCanvas: React.FC = () => {
         y = e.touches[0].clientY;
       }
 
-      // 1. Expanding Cosmic Stardust Rings
-      ringsRef.current.push({
-        x,
-        y,
-        radius: 2,
-        maxRadius: 55,
-        alpha: 0.9,
-        color: stardustColors[Math.floor(Math.random() * stardustColors.length)],
-      });
-      ringsRef.current.push({
-        x,
-        y,
-        radius: 1,
-        maxRadius: 85,
-        alpha: 0.6,
-        color: '#FFFFFF',
-      });
+      // หายไปทันทีเมื่อคลิกครั้งต่อไป: Clear previous paper airplanes instantly on new click
+      planesRef.current = [];
 
-      // 2. Burst of Stardust Sparkles (สะเก็ดดาว)
-      const count = 32;
-      for (let i = 0; i < count; i++) {
-        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.8;
-        const speed = Math.random() * 7 + 2;
-        const pType: 'star4' | 'star5' | 'glitter' | 'spark' =
-          i % 4 === 0 ? 'star4' : i % 4 === 1 ? 'star5' : i % 4 === 2 ? 'glitter' : 'spark';
+      // Spawn 2 to 3 paper airplanes flying outwards on click
+      const spawnCount = Math.floor(Math.random() * 2) + 2; // 2 or 3 planes
 
-        particlesRef.current.push({
+      for (let i = 0; i < spawnCount; i++) {
+        // Natural upward & sideways soaring trajectories (-25deg to -155deg or full 360 spread with upward bias)
+        const baseAngle =
+          (Math.PI * 2 * (i + Math.random() * 0.5)) / spawnCount - Math.PI / 2;
+        const initialSpeed = Math.random() * 4 + 6.5; // Smooth launch velocity
+        const variant = planeVariants[Math.floor(Math.random() * planeVariants.length)];
+
+        planesRef.current.push({
           x,
           y,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          size: Math.random() * 8 + 4,
-          color: stardustColors[Math.floor(Math.random() * stardustColors.length)],
+          vx: Math.cos(baseAngle) * initialSpeed,
+          vy: Math.sin(baseAngle) * initialSpeed,
+          angle: baseAngle,
+          speed: initialSpeed,
+          scale: Math.random() * 0.35 + 0.75, // Scale 0.75x to 1.1x
           alpha: 1,
           life: 0,
-          maxLife: Math.random() * 30 + 25,
-          rotation: Math.random() * 360,
-          rotSpeed: (Math.random() - 0.5) * 16,
-          points: i % 2 === 0 ? 4 : 5,
-          twinkleSpeed: Math.random() * 0.3 + 0.1,
-          type: pType,
+          maxLife: Math.random() * 35 + 55, // 55 to 90 frames (~1.0 - 1.5 seconds)
+          curveFactor: (Math.random() - 0.5) * 0.035, // Aerodynamic gentle bank curve
+          wingColor: variant.wing,
+          shadowColor: variant.shadow,
+          accentColor: variant.accent,
+          trail: [{ x, y, alpha: 1 }],
+          wobblePhase: Math.random() * Math.PI * 2,
+          wobbleSpeed: Math.random() * 0.12 + 0.08,
         });
       }
     };
@@ -113,7 +124,7 @@ export const ClickEffectCanvas: React.FC = () => {
     window.addEventListener('mousedown', handlePointerDown);
     window.addEventListener('touchstart', handlePointerDown, { passive: true });
 
-    // Render loop
+    // Render loop for Paper Airplanes
     const render = () => {
       const canvas = canvasRef.current;
       if (canvas) {
@@ -121,107 +132,154 @@ export const ClickEffectCanvas: React.FC = () => {
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          // Render Cosmic Rings
-          const rings = ringsRef.current;
-          for (let i = rings.length - 1; i >= 0; i--) {
-            const r = rings[i];
-            r.radius += (r.maxRadius - r.radius) * 0.16 + 0.5;
-            r.alpha -= 0.03;
+          const planes = planesRef.current;
 
-            if (r.alpha <= 0 || r.radius >= r.maxRadius) {
-              rings.splice(i, 1);
-              continue;
+          for (let i = planes.length - 1; i >= 0; i--) {
+            const p = planes[i];
+            p.life++;
+
+            // Fade out towards end of life
+            if (p.life > p.maxLife * 0.7) {
+              const remaining = p.maxLife - p.life;
+              const fadeDuration = p.maxLife * 0.3;
+              p.alpha = Math.max(0, remaining / fadeDuration);
             }
-
-            ctx.save();
-            ctx.globalAlpha = Math.max(0, r.alpha);
-            ctx.beginPath();
-            ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
-            ctx.lineWidth = 2.5;
-            ctx.strokeStyle = r.color;
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = r.color;
-            ctx.stroke();
-            ctx.restore();
-          }
-
-          // Render Stardust Particles
-          const particles = particlesRef.current;
-          for (let i = particles.length - 1; i >= 0; i--) {
-            const p = particles[i];
-            p.life += 1;
-            p.x += p.vx;
-            p.y += p.vy;
-            p.vx *= 0.93; // friction
-            p.vy *= 0.93;
-            p.vy += 0.08; // light gravity drift
-            p.rotation += p.rotSpeed;
-
-            // Twinkle effect
-            const fade = 1 - p.life / p.maxLife;
-            const twinkle = 0.7 + 0.3 * Math.sin(p.life * p.twinkleSpeed);
-            p.alpha = Math.max(0, fade * twinkle);
 
             if (p.life >= p.maxLife || p.alpha <= 0) {
-              particles.splice(i, 1);
+              planes.splice(i, 1);
               continue;
             }
 
-            ctx.save();
-            ctx.globalAlpha = p.alpha;
-            ctx.fillStyle = p.color;
-            ctx.strokeStyle = p.color;
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = p.color;
+            // Aerodynamic flight physics: gliding, lift, and gentle swooping curve
+            p.angle += p.curveFactor;
+            p.vy -= 0.04; // Slight aerodynamic thermal lift
+            p.speed *= 0.985; // Natural drag
 
-            if (p.type === 'star4' || p.type === 'star5') {
-              // Draw Multi-pointed Star Particle (สะเก็ดดาว)
-              ctx.translate(p.x, p.y);
-              ctx.rotate((p.rotation * Math.PI) / 180);
-              const numPoints = p.points;
-              const outerRadius = p.size;
-              const innerRadius = p.size * 0.35;
+            p.vx = Math.cos(p.angle) * p.speed;
+            p.vy = Math.sin(p.angle) * p.speed - 0.2; // Soaring lift
+            p.x += p.vx;
+            p.y += p.vy;
 
-              ctx.beginPath();
-              for (let pt = 0; pt < numPoints * 2; pt++) {
-                const r = pt % 2 === 0 ? outerRadius : innerRadius;
-                const angle = (pt * Math.PI) / numPoints;
-                ctx.lineTo(Math.cos(angle) * r, Math.sin(angle) * r);
+            p.wobblePhase += p.wobbleSpeed;
+
+            // Record wind flight path trail
+            if (p.life % 2 === 0) {
+              p.trail.push({ x: p.x, y: p.y, alpha: p.alpha });
+              if (p.trail.length > 14) {
+                p.trail.shift();
               }
-              ctx.closePath();
-              ctx.fill();
-
-              // Center bright core dot
-              ctx.fillStyle = '#FFFFFF';
-              ctx.beginPath();
-              ctx.arc(0, 0, p.size * 0.2, 0, Math.PI * 2);
-              ctx.fill();
-            } else if (p.type === 'glitter') {
-              // Draw 4-ray Star Burst Cross
-              ctx.translate(p.x, p.y);
-              ctx.rotate((p.rotation * Math.PI) / 180);
-              const s = p.size * 1.2;
-
-              ctx.beginPath();
-              ctx.moveTo(-s, 0);
-              ctx.quadraticCurveTo(0, 0, 0, -s);
-              ctx.quadraticCurveTo(0, 0, s, 0);
-              ctx.quadraticCurveTo(0, 0, 0, s);
-              ctx.quadraticCurveTo(0, 0, -s, 0);
-              ctx.closePath();
-              ctx.fill();
-            } else {
-              // Sparkle Circle Dust
-              ctx.beginPath();
-              ctx.arc(p.x, p.y, Math.max(0.5, p.size * fade), 0, Math.PI * 2);
-              ctx.fill();
             }
+
+            // 1. DRAW FLIGHT STREAM / WIND CONTRAIL (เส้นทางลมพริ้วๆ)
+            if (p.trail.length > 1) {
+              ctx.save();
+              ctx.setLineDash([4, 4]);
+              ctx.lineCap = 'round';
+              ctx.lineWidth = 1.8 * p.scale;
+              ctx.strokeStyle = p.accentColor;
+
+              for (let t = 0; t < p.trail.length - 1; t++) {
+                const pt1 = p.trail[t];
+                const pt2 = p.trail[t + 1];
+                const trailAlpha = (t / p.trail.length) * pt2.alpha * 0.5;
+
+                ctx.globalAlpha = trailAlpha;
+                ctx.beginPath();
+                ctx.moveTo(pt1.x, pt1.y);
+                ctx.lineTo(pt2.x, pt2.y);
+                ctx.stroke();
+              }
+              ctx.restore();
+            }
+
+            // 2. DRAW 3D ORIGAMI PAPER AIRPLANE
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.angle);
+            ctx.scale(p.scale, p.scale);
+            ctx.globalAlpha = p.alpha;
+
+            // Subtle bank/roll perspective wobble
+            const bankRoll = Math.sin(p.wobblePhase) * 0.15;
+            ctx.transform(1, 0, bankRoll, 1, 0, 0);
+
+            // Plane Dimensions
+            const noseX = 22;
+            const noseY = 0;
+            const tailX = -18;
+            const tailInnerX = -12;
+            const wingSpanY = 15;
+            const keelDepthY = 5;
+
+            // Drop shadow under plane for 3D elevation
+            ctx.save();
+            ctx.translate(2, 6);
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(tailX, -wingSpanY);
+            ctx.lineTo(tailInnerX, 0);
+            ctx.lineTo(tailX, wingSpanY);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+            ctx.filter = 'blur(3px)';
+            ctx.fill();
+            ctx.restore();
+
+            // Wing Top Half (Light Face)
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(tailX, -wingSpanY);
+            ctx.lineTo(tailInnerX, 0);
+            ctx.closePath();
+            ctx.fillStyle = p.wingColor;
+            ctx.fill();
+            ctx.lineWidth = 0.8;
+            ctx.strokeStyle = '#CBD5E1';
+            ctx.stroke();
+
+            // Center Fold / Keel Top Shadow
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(tailInnerX, 0);
+            ctx.lineTo(tailX, -keelDepthY);
+            ctx.closePath();
+            ctx.fillStyle = p.shadowColor;
+            ctx.fill();
+
+            // Wing Bottom Half (Shadowed/Tilted Face for 3D Origami Crease)
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(tailInnerX, 0);
+            ctx.lineTo(tailX, wingSpanY);
+            ctx.closePath();
+            ctx.fillStyle = p.shadowColor;
+            ctx.fill();
+            ctx.lineWidth = 0.8;
+            ctx.strokeStyle = '#94A3B8';
+            ctx.stroke();
+
+            // Accent Decorative Stripe on Top Wing (Sporty Open House aesthetic)
+            ctx.beginPath();
+            ctx.moveTo(noseX - 8, -1.5);
+            ctx.lineTo(tailX + 4, -wingSpanY * 0.65);
+            ctx.lineTo(tailX + 1, -wingSpanY * 0.85);
+            ctx.lineTo(noseX - 4, -0.8);
+            ctx.closePath();
+            ctx.fillStyle = p.accentColor;
+            ctx.fill();
+
+            // Center Spine Highlight
+            ctx.beginPath();
+            ctx.moveTo(noseX, noseY);
+            ctx.lineTo(tailInnerX, 0);
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.stroke();
 
             ctx.restore();
           }
         }
       }
-
       animFrameRef.current = requestAnimationFrame(render);
     };
 
@@ -231,15 +289,16 @@ export const ClickEffectCanvas: React.FC = () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('mousedown', handlePointerDown);
       window.removeEventListener('touchstart', handlePointerDown);
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
     };
   }, []);
 
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-[9999]"
-      style={{ width: '100vw', height: '100vh' }}
+      className="fixed inset-0 pointer-events-none z-50 overflow-hidden"
     />
   );
 };

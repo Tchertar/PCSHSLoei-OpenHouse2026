@@ -588,6 +588,145 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ Excel (.xlsx) ข้อมูลผู้เข้าร่วมงานทั้งหมด');
   };
 
+  // Download example Excel template for importing multiple attendees (.XLSX)
+  const handleDownloadAttendeeTemplate = () => {
+    const headers = [
+      'ชื่อ',
+      'นามสกุล',
+      'เบอร์โทรศัพท์',
+      'อีเมล',
+      'สถานภาพ',
+      'หน่วยงาน / สถาบัน',
+      'อำเภอ / เขต',
+      'จังหวัด',
+      'จำนวนผู้ร่วมงาน',
+      'วิธีการเดินทาง',
+    ];
+
+    const sampleRows = [
+      [
+        'พริมพลอย',
+        'จันทร์',
+        '0812604295',
+        'philincansri@gmail.com',
+        'นักเรียน',
+        'โรงเรียนหนองบัวพิทยาคาร',
+        'เมืองหนองบัวลำภู',
+        'หนองบัวลำภู',
+        1,
+        'รถบัสโรงเรียน',
+      ],
+      [
+        'ปิ่นมณี',
+        'ชัยสมบัติ',
+        '0951204660',
+        'pra84774@gmail.com',
+        'นักเรียน',
+        'โรงเรียนบ้านกุดฮู',
+        'โนนสัง',
+        'หนองบัวลำภู',
+        1,
+        'รถส่วนตัว',
+      ],
+      [
+        'กุลนิดา',
+        'สุทธิแพทย์',
+        '0910644809',
+        'ruttanadpc8@gmail.com',
+        'นักเรียน',
+        'โรงเรียนบ้านหมากแข้ง',
+        'เมืองอุดรธานี',
+        'อุดรธานี',
+        1,
+        'รถตู้สถาบัน',
+      ],
+      [
+        'สมชาย',
+        'วิชาการดี',
+        '0891234567',
+        'somchai.teacher@school.ac.th',
+        'ครู/อาจารย์',
+        'โรงเรียนเลยพิทยาคม',
+        'เมืองเลย',
+        'เลย',
+        5,
+        'รถบัสโรงเรียน',
+      ],
+      [
+        'วิภาดา',
+        'รักบุตร',
+        '0869876543',
+        'wiphada.p@gmail.com',
+        'ผู้ปกครอง',
+        'ผู้ปกครองนักเรียน',
+        'วังสะพุง',
+        'เลย',
+        3,
+        'รถส่วนตัว',
+      ],
+      [
+        'ธนกฤต',
+        'เทคโนโลยี',
+        '0813579246',
+        'thanakrit.tech@outlook.com',
+        'บุคคลทั่วไป',
+        'ประชาชนทั่วไป',
+        'เชียงคาน',
+        'เลย',
+        2,
+        'รถสาธารณะ',
+      ],
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 18 }, // ชื่อ
+      { wch: 20 }, // นามสกุล
+      { wch: 16 }, // เบอร์โทรศัพท์
+      { wch: 28 }, // อีเมล
+      { wch: 16 }, // สถานภาพ
+      { wch: 30 }, // หน่วยงาน / สถาบัน
+      { wch: 20 }, // อำเภอ / เขต
+      { wch: 18 }, // จังหวัด
+      { wch: 18 }, // จำนวนผู้ร่วมงาน
+      { wch: 18 }, // วิธีการเดินทาง
+    ];
+
+    // Sheet 2: Instructions & Supported Values
+    const instructionHeaders = ['หัวข้อ / คอลัมน์', 'ความสำคัญ', 'ตัวอย่างค่าที่รองรับ / คำอธิบาย'];
+    const instructionRows = [
+      ['ชื่อ', 'จำเป็น (Required)', 'ระบุชื่อจริง (เช่น พริมพลอย, สมชาย)'],
+      ['นามสกุล', 'จำเป็น (Required)', 'ระบุนามสกุล (เช่น จันทร์, ใจดี)'],
+      ['เบอร์โทรศัพท์', 'แนะนำ', 'เบอร์โทรศัพท์ 10 หลัก (เช่น 0812604295)'],
+      ['อีเมล', 'แนะนำ', 'อีเมลสำหรับเข้าสู่ระบบ (หากเว้นว่าง ระบบจะสร้างให้อัตโนมัติ)'],
+      ['สถานภาพ', 'แนะนำ', 'เลือกอย่างใดอย่างหนึ่ง: นักเรียน, ครู/อาจารย์, ผู้ปกครอง, บุคคลทั่วไป'],
+      ['หน่วยงาน / สถาบัน', 'แนะนำ', 'ชื่อโรงเรียน สถาบัน หรือหน่วยงานต้นสังกัด'],
+      ['อำเภอ / เขต', 'แนะนำ', 'อำเภอที่ตั้งของหน่วยงานหรือที่อยู่ (เช่น เมืองเลย, วังสะพุง)'],
+      ['จังหวัด', 'แนะนำ', 'จังหวัด (เช่น เลย, หนองบัวลำภู, อุดรธานี, ขอนแก่น)'],
+      ['จำนวนผู้ร่วมงาน', 'แนะนำ', 'ตัวเลขจำนวนผู้ร่วมเดินทาง เช่น 1, 2, 5'],
+      ['วิธีการเดินทาง', 'แนะนำ', 'เลือกอย่างใดอย่างหนึ่ง: รถส่วนตัว, รถบัสโรงเรียน, รถตู้สถาบัน, รถสาธารณะ, อื่นๆ'],
+      ['หมายเหตุเกี่ยวกับรหัสผู้เข้าร่วม', 'อัตโนมัติ', 'ระบบจะสร้างรหัสประจำตัว (เช่น PCSHS2026-XXXX) และ QR Code ให้อัตโนมัติเมื่อนำเข้าข้อมูล'],
+    ];
+
+    const instructionSheet = XLSX.utils.aoa_to_sheet([instructionHeaders, ...instructionRows]);
+    instructionSheet['!cols'] = [
+      { wch: 25 },
+      { wch: 20 },
+      { wch: 60 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'แบบฟอร์มข้อมูลผู้ลงทะเบียน');
+    XLSX.utils.book_append_sheet(workbook, instructionSheet, 'คำแนะนำการกรอกข้อมูล');
+
+    const fileName = 'แบบฟอร์มตัวอย่าง_นำเข้าข้อมูลผู้ลงทะเบียน_PCSHS2026.xlsx';
+    XLSX.writeFile(workbook, fileName);
+
+    addAuditLog('ดาวน์โหลดแบบฟอร์ม', 'ดาวน์โหลดไฟล์ Excel ตัวอย่างสำหรับกรอกข้อมูลผู้ลงทะเบียนหลายคน');
+  };
+
   // Delete Attendee with Super Admin password confirmation
   const handleOpenDeleteAttendeeModal = (att: Attendee) => {
     setDeletingAttendee(att);
@@ -1411,14 +1550,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
 
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={handleDownloadAttendeeTemplate}
+                    title="ดาวน์โหลดไฟล์ Excel ตัวอย่างสำหรับกรอกข้อมูลผู้ลงทะเบียนหลายคน (.XLSX)"
+                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-blue-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-blue-400/30"
+                  >
+                    <Download className="w-4 h-4 text-blue-200" />
+                    <span>ไฟล์ Excel ตัวอย่าง (.XLSX)</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       setAddAttendeeError('');
                       setShowAddAttendeeModal(true);
                     }}
                     title="เพิ่มข้อมูลผู้ลงทะเบียนรายบุคคลโดยแอดมิน"
-                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-orange-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-orange-400/30"
+                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-orange-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-orange-400/30"
                   >
                     <Plus className="w-4 h-4 text-amber-200" />
                     <span>เพิ่มผู้ลงทะเบียน</span>
@@ -1434,7 +1583,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     title="นำเข้าข้อมูลผู้ลงทะเบียนจากไฟล์ Excel (.xlsx / .csv)"
-                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-purple-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2 border border-purple-300/30"
+                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-purple-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2 border border-purple-300/30"
                   >
                     <FileUp className="w-4 h-4 text-purple-100" />
                     <span>นำเข้าข้อมูล (.XLSX)</span>
@@ -1442,12 +1591,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                   <button
                     onClick={handleExportXLSX}
-                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
                   >
                     <FileSpreadsheet className="w-4 h-4" />
                     <span>Export ข้อมูลผู้เข้าร่วม (.XLSX)</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Batch Excel Import Quick Tip Banner */}
+              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-slate-900 text-xs sm:text-sm">
+                      ต้องการลงทะเบียนหรือเพิ่มข้อมูลผู้เข้าร่วมงานครั้งละหลายคน?
+                    </h5>
+                    <p className="text-slate-600 mt-0.5 leading-relaxed">
+                      กดปุ่ม <strong>"ไฟล์ Excel ตัวอย่าง (.XLSX)"</strong> เพื่อดาวน์โหลดเทมเพลตมาตรฐาน กรอกรายชื่อผู้เข้าร่วม แล้วกด <strong>"นำเข้าข้อมูล (.XLSX)"</strong> ระบบจะสร้างรหัสประจำตัว (PCSHS2026-XXXX) และ QR Code ให้อัตโนมัติทันที
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadAttendeeTemplate}
+                  className="shrink-0 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs cursor-pointer transition-colors flex items-center gap-1.5 text-xs w-full sm:w-auto justify-center"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>โหลดไฟล์ตัวอย่าง</span>
+                </button>
               </div>
 
               <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">

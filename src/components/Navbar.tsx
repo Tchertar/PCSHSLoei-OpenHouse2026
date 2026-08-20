@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, Building2 } from 'lucide-react';
+import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, Building2, MapPin } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;
@@ -28,6 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navLinks = [
+    { name: 'สถานที่จัดกิจกรรม', href: '#activity-locations', icon: MapPin },
     { name: 'กิจกรรม&การแข่งขัน', href: '#activities', icon: Trophy },
     { name: 'แผนผังงาน', href: '#map', icon: Map },
     { name: 'กำหนดการ', href: '#schedule', icon: Calendar },

@@ -5,11 +5,12 @@ import {
   SCHEDULE_LIST,
 } from './data/initialData';
 
-import { BackgroundSky } from './components/BackgroundSky';
+import { Science3DBackground } from './components/Science3DBackground';
 import { ClickEffectCanvas } from './components/ClickEffectCanvas';
 import { Navbar } from './components/Navbar';
 import { Banner } from './components/Banner';
-import { CountdownTimer } from './components/CountdownTimer';
+import { ActivityLocationsTable } from './components/ActivityLocationsTable';
+import { VerificationStepsSection } from './components/VerificationStepsSection';
 import { ActivitiesSection } from './components/ActivitiesSection';
 import { MapSection } from './components/MapSection';
 import { ScheduleSection } from './components/ScheduleSection';
@@ -312,8 +313,8 @@ export default function App() {
       {/* Click Burst Particles & Ripples Effect */}
       <ClickEffectCanvas />
 
-      {/* Dynamic Animated Sky & Clouds Background */}
-      <BackgroundSky />
+      {/* 3D Minimal Science Background with Depth of Field & Floating Elements */}
+      <Science3DBackground />
 
       {/* Main Container */}
       <div className="relative z-10 flex-1 flex flex-col">
@@ -332,80 +333,21 @@ export default function App() {
           onLogout={handleLogout}
         />
 
-        {/* Hero Full-width Banner */}
+        {/* Hero Full-width Banner with Locked Countdown */}
         <Banner
           onRegisterClick={handleGeneralRegisterClick}
           onOpenOrgModal={() => setIsOrgModalOpen(true)}
         />
 
-        {/* Live Event Countdown Timer */}
-        <CountdownTimer />
+        {/* Activity Locations Summary Table (from official PDF) */}
+        <ActivityLocationsTable />
 
-        {/* Prominent Center Registration Section */}
-        <section className="my-8 px-4 text-center max-w-4xl mx-auto z-10">
-          <div className="bg-white/90 border border-slate-200/80 rounded-3xl p-8 sm:p-12 shadow-xl backdrop-blur-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-400/10 rounded-full blur-3xl" />
-
-            <span className="inline-flex items-center gap-2 bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs sm:text-sm px-4 py-1.5 rounded-full mb-4">
-              <Lock className="w-4 h-4 text-slate-500" />
-              <span>ปิดรับการลงทะเบียนออนไลน์ทุกช่องทางแล้ว</span>
-            </span>
-
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-slate-900 mb-4 leading-tight flex flex-col items-center justify-center gap-1 sm:gap-2">
-              <span>PCSHS Loei Open House 2026</span>
-              <span>มหกรรมเปิดบ้านวิทยาศาสตร์</span>
-            </h1>
-
-            <div className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto mb-8 leading-relaxed flex flex-col items-center justify-center gap-1 font-medium">
-              <span>Academic - Challenge - Innovation Expo</span>
-              <span>สำหรับผู้ที่มีข้อมูลในระบบแล้ว สามารถเข้าสู่ระบบเพื่อดูบัตรประจำตัวและ QR Code เข้างาน</span>
-            </div>
-
-            {currentAttendee ? (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button
-                  onClick={() => setIsProfileOpen(true)}
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl transition-all transform hover:scale-105 cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <UserCheck className="w-6 h-6" />
-                  <span>ดูบัตรประจำตัวผู้เข้าร่วม ({currentAttendee.firstName})</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 flex-wrap">
-                {/* Prominent Login Button for Registered Attendees */}
-                <button
-                  onClick={handleOpenUserLogin}
-                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-xl hover:shadow-blue-500/30 transition-all transform hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center gap-2.5 border border-blue-400/40"
-                >
-                  <LogIn className="w-5 h-5 text-blue-200" />
-                  <span>เข้าสู่ระบบเพื่อดูบัตรประจำตัว</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-
-                {/* Closed Standard Registration Button */}
-                <button
-                  disabled={true}
-                  title="ระบบปิดรับการลงทะเบียนออนไลน์แล้ว"
-                  className="w-full sm:w-auto px-6 py-4 bg-slate-100 text-slate-400 font-bold text-sm sm:text-base rounded-2xl shadow-none cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2"
-                >
-                  <Lock className="w-4 h-4 text-slate-400" />
-                  <span>ปิดรับการลงทะเบียนบุคคลทั่วไปแล้ว</span>
-                </button>
-
-                {/* Closed Organization Registration Button */}
-                <button
-                  disabled={true}
-                  title="ระบบปิดรับการลงทะเบียนหน่วยงานแล้ว"
-                  className="w-full sm:w-auto px-6 py-4 bg-slate-100 text-slate-400 font-bold text-sm sm:text-base rounded-2xl shadow-none cursor-not-allowed border border-slate-200 flex items-center justify-center gap-2"
-                >
-                  <Lock className="w-4 h-4 text-slate-400" />
-                  <span>ปิดรับการลงทะเบียนหน่วยงานแล้ว</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
+        {/* Verification Steps Section (ขั้นตอนการยืนยันตัวตนเพื่อเข้าร่วมงาน) */}
+        <VerificationStepsSection
+          currentAttendee={currentAttendee}
+          onOpenLogin={handleOpenUserLogin}
+          onOpenProfile={() => setIsProfileOpen(true)}
+        />
 
         {/* Dynamic Activities Section */}
         <ActivitiesSection activities={activities} currentAttendee={currentAttendee} />
