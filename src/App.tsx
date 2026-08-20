@@ -334,10 +334,7 @@ export default function App() {
         />
 
         {/* Hero Full-width Banner with Locked Countdown */}
-        <Banner
-          onRegisterClick={handleGeneralRegisterClick}
-          onOpenOrgModal={() => setIsOrgModalOpen(true)}
-        />
+        <Banner />
 
         {/* Activity Locations Summary Table (from official PDF) */}
         <ActivityLocationsTable />

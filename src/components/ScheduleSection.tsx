@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScheduleItem } from '../types';
-import { Calendar, Clock, MapPin, Sparkles } from 'lucide-react';
+import { Calendar, Clock, MapPin, Sparkles, FileText, Download } from 'lucide-react';
 
 interface ScheduleSectionProps {
   schedule: ScheduleItem[];
@@ -9,7 +9,7 @@ interface ScheduleSectionProps {
 export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ schedule }) => {
   return (
     <section id="schedule" className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto z-10 relative">
-      <div className="text-center max-w-3xl mx-auto mb-12 space-y-3">
+      <div className="text-center max-w-3xl mx-auto mb-10 space-y-4">
         <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-bold px-4 py-1.5 rounded-full">
           <Calendar className="w-4 h-4 text-orange-500" />
           <span>กำหนดการจัดงานประจำวัน</span>
@@ -20,6 +20,20 @@ export const ScheduleSection: React.FC<ScheduleSectionProps> = ({ schedule }) =>
         <p className="text-slate-600 text-sm sm:text-base">
           ตารางเวลาภาพรวมของพิธีเปิด การประกวดแข่งขัน นิทรรศการ และพิธีมอบรางวัลเกียรติบัตร
         </p>
+
+        {/* Download Schedule PDF Button */}
+        <div className="pt-2 flex justify-center">
+          <a
+            href="https://drive.google.com/file/d/15bBeF8VnE4SvJ7eHMNuENl93ea7nMDgT/view?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm sm:text-base px-6 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 border border-blue-400/30"
+          >
+            <FileText className="w-5 h-5 text-blue-200" />
+            <span>ดาวน์โหลดกำหนดการ (PDF)</span>
+            <Download className="w-4 h-4 text-blue-200 ml-0.5" />
+          </a>
+        </div>
       </div>
 
       <div className="relative max-w-4xl mx-auto">

@@ -37,7 +37,7 @@ export const BannerCountdown: React.FC = () => {
   }, [targetTime]);
 
   return (
-    <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-xl p-2.5 sm:p-3.5 w-[270px] sm:w-[320px] md:w-[340px] text-slate-800 transition-transform duration-200 hover:scale-[1.02] select-none pointer-events-auto">
+    <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-xl p-3 sm:p-3.5 w-full max-w-[360px] sm:max-w-[420px] lg:w-[320px] xl:w-[340px] text-slate-800 transition-transform duration-200 hover:scale-[1.02] select-none pointer-events-auto">
       {/* Top Header Row */}
       <div className="flex items-center justify-between gap-1.5 pb-2 mb-2 border-b border-slate-100">
         <div className="flex items-center gap-1.5">

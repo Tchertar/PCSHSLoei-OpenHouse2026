@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Search, FileText, Download, Building2, Lock } from 'lucide-react';
+import { Sparkles, Search } from 'lucide-react';
 import { BannerCountdown } from './BannerCountdown';
 
-export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: () => void }> = ({ onRegisterClick, onOpenOrgModal }) => {
+export const Banner: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
@@ -116,8 +116,8 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
             }}
           />
 
-          {/* Locked Banner Countdown Timer (Top-Left Area matching red outline with clean white background) */}
-          <div className="absolute top-2 left-2 sm:top-4 sm:left-4 md:top-5 md:left-5 z-30 pointer-events-auto">
+          {/* Locked Banner Countdown Timer on Desktop (Top-Left Area over banner) */}
+          <div className="hidden lg:block absolute top-3 left-3 xl:top-5 xl:left-5 z-30 pointer-events-auto">
             <BannerCountdown />
           </div>
         </div>
@@ -159,51 +159,9 @@ export const Banner: React.FC<{ onRegisterClick: () => void; onOpenOrgModal?: ()
         )}
       </div>
 
-      {/* Quick Action Bar BELOW banner image */}
-      <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-3 bg-slate-900/90 text-white rounded-2xl px-5 py-3.5 shadow-xl border border-slate-800/80 backdrop-blur-md">
-        <div className="flex items-center gap-3 text-center md:text-left">
-          <span className="relative flex h-3 w-3 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-          </span>
-          <span className="text-xs sm:text-sm font-semibold text-slate-200">
-            28 สิงหาคม 2569 | ณ โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย
-          </span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2.5 w-full md:w-auto shrink-0">
-          <a
-            href="https://drive.google.com/file/d/15bBeF8VnE4SvJ7eHMNuENl93ea7nMDgT/view?usp=sharing"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer border border-blue-400/30"
-          >
-            <FileText className="w-4 h-4 text-blue-200" />
-            <span>ดาวน์โหลดกำหนดการ (PDF)</span>
-          </a>
-
-          <button
-            onClick={onRegisterClick}
-            disabled={true}
-            title="ปิดรับการลงทะเบียนบุคคลทั่วไปออนไลน์แล้ว"
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 text-slate-400 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-85"
-          >
-            <Lock className="w-4 h-4 text-slate-400" />
-            <span>ปิดรับการลงทะเบียนบุคคลทั่วไปแล้ว</span>
-          </button>
-
-          {onOpenOrgModal && (
-            <button
-              onClick={onOpenOrgModal}
-              disabled={true}
-              title="ปิดรับการลงทะเบียนสำหรับหน่วยงานออนไลน์แล้ว"
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800/90 text-slate-400 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-none cursor-not-allowed border border-slate-700 opacity-85"
-            >
-              <Lock className="w-4 h-4 text-slate-400" />
-              <span>ปิดรับการลงทะเบียนหน่วยงานแล้ว</span>
-            </button>
-          )}
-        </div>
+      {/* Countdown Timer BELOW banner on Smart Phone & iPad / Tablet */}
+      <div className="lg:hidden mt-3 sm:mt-4 flex justify-center w-full z-20">
+        <BannerCountdown />
       </div>
     </section>
   );
