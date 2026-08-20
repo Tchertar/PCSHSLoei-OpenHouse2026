@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { BannerCountdown } from './BannerCountdown';
 
 export const Banner: React.FC = () => {
@@ -9,8 +9,6 @@ export const Banner: React.FC = () => {
   const [containerDim, setContainerDim] = useState({ width: 0, height: 0 });
   const [imgSrc, setImgSrc] = useState('https://lh3.googleusercontent.com/d/1Krk3TbqazkWZOx-XTLRXTuIrBu45rX0-');
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-
-  const isRegistrationOpen = false;
 
   // Smooth Parallax tilt & translation state
   const [tilt, setTilt] = useState({ rotX: 0, rotY: 0, transX: 0, transY: 0 });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Eye, EyeOff, KeyRound, Lock, LogIn, Mail, UserCheck, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Mail, X } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -226,7 +226,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   required
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
-                  placeholder="เช่น user@gmail.com หรือ PCSHS2026-XXXX"
+                  placeholder="เช่น user@gmail.com หรือ PCSHS-0001"
                   className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none focus:border-blue-500 shadow-sm"
                 />
               </div>

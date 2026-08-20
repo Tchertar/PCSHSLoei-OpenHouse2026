@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { ActivityItem, AdminRole, AdminUser, Attendee, AuditLog, ScheduleItem } from '../types';
 import {
   saveAttendeeToFirestore,
+  saveAllAttendeesToFirestore,
   deleteAttendeeFromFirestore,
   saveAdminToFirestore,
   deleteAdminFromFirestore,
@@ -15,6 +16,8 @@ import {
   deleteScheduleFromFirestore,
   testFirebaseConnection,
   FirebaseConnectionTestResult,
+  getNextConsecutiveParticipantCode,
+  resequenceAllAttendees,
 } from '../lib/firebase';
 import {
   Activity,
@@ -36,10 +39,8 @@ import {
   MapPin,
   Map,
   Camera,
-  Layers,
   Phone,
   Link as LinkIcon,
-  Sparkles,
   Calendar,
   Clock,
   Upload,
@@ -50,7 +51,6 @@ import {
   Database,
   RefreshCw,
   Server,
-  Wifi,
   XCircle,
 } from 'lucide-react';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
@@ -192,20 +192,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [superAdminPasswordError, setSuperAdminPasswordError] = useState('');
   const [showSuperAdminPassword, setShowSuperAdminPassword] = useState(false);
 
-  // Add Attendee (Admin Manual Entry) state
+  // Add Attendee (Admin School/Institution Entry) state
   const [showAddAttendeeModal, setShowAddAttendeeModal] = useState(false);
+  const [viewingAttendeeDetail, setViewingAttendeeDetail] = useState<Attendee | null>(null);
   const [addAttendeeForm, setAddAttendeeForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    status: 'นักเรียน' as Attendee['status'],
-    organization: '',
-    province: 'เลย',
-    district: 'เมืองเลย',
-    attendeeCount: 1,
-    transportMethod: 'รถส่วนตัว' as Attendee['transportMethod'],
-    password: '',
+    schoolType: 'โรงเรียนขยายโอกาสทางการศึกษา',
+    schoolName: '',
+    serviceArea: 'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+    studentType: 'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+    interestedActivities: 'นิทรรศการวิชาการ 8 สาขาวิชา, การประกวดโครงงานวิทยาศาสตร์',
+    executivesCount: 1,
+    teachersCount: 2,
+    studentsCount: 10,
+    coordinatorName: '',
+    coordinatorPhone: '',
+    contactEmail: '',
+    acceptanceFormUrl: '',
   });
   const [addAttendeeError, setAddAttendeeError] = useState('');
   const [isSavingAttendee, setIsSavingAttendee] = useState(false);
@@ -244,10 +246,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // Check-in Confirmation Modal for School / File Import Attendees (Actual Attendance breakdown)
+  const [checkingInAttendee, setCheckingInAttendee] = useState<Attendee | null>(null);
+  const [actualExecCount, setActualExecCount] = useState<number>(0);
+  const [actualTeachersCount, setActualTeachersCount] = useState<number>(0);
+  const [actualStudentsCount, setActualStudentsCount] = useState<number>(0);
+  const [actualCheckinNotes, setActualCheckinNotes] = useState<string>('');
+  const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
+
   // Calculate Summary Statistics
   const totalRegistrations = attendees.length;
+  const totalRegisteredExecs = attendees.reduce((sum, a) => sum + (a.executivesCount || 0), 0);
+  const totalRegisteredTeachers = attendees.reduce((sum, a) => sum + (a.teachersCount || 0), 0);
+  const totalRegisteredStudents = attendees.reduce((sum, a) => sum + (a.studentsCount || (a.isWebIndividual ? (a.attendeeCount || 1) : 0)), 0);
   const totalParticipantsSum = attendees.reduce((sum, a) => sum + (a.attendeeCount || 1), 0);
-  const totalCheckedIn = attendees.filter((a) => a.checkedIn).length;
+
+  // Checked-in / Actual Attendance Totals
+  const checkedInAttendees = attendees.filter((a) => a.checkedIn);
+  const totalCheckedIn = checkedInAttendees.length;
+  const totalActualAttendees = checkedInAttendees.reduce(
+    (sum, a) => sum + (a.actualAttendeeCount !== undefined ? a.actualAttendeeCount : (a.attendeeCount || 1)),
+    0
+  );
+  const totalActualExecs = checkedInAttendees.reduce(
+    (sum, a) => sum + (a.actualExecutivesCount !== undefined ? a.actualExecutivesCount : (a.executivesCount || 0)),
+    0
+  );
+  const totalActualTeachers = checkedInAttendees.reduce(
+    (sum, a) => sum + (a.actualTeachersCount !== undefined ? a.actualTeachersCount : (a.teachersCount || 0)),
+    0
+  );
+  const totalActualStudents = checkedInAttendees.reduce(
+    (sum, a) => sum + (a.actualStudentsCount !== undefined ? a.actualStudentsCount : (a.studentsCount || (a.isWebIndividual ? (a.attendeeCount || 1) : 0))),
+    0
+  );
 
   // Calculate Province Pie Data
   const provinceCounts: Record<string, number> = {};
@@ -271,64 +303,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     value: statusCounts[key],
   }));
 
-  // Handle QR Scan / Code Check-in
-  const handleCheckIn = (codeOrEmail: string) => {
-    const codeClean = codeOrEmail.trim().split('|')[0].toUpperCase();
-    const foundIdx = attendees.findIndex(
-      (a) =>
-        a.participantCode.toUpperCase() === codeClean ||
-        a.email.toLowerCase() === codeOrEmail.trim().toLowerCase()
-    );
+  // Initiate Check-In (Detects Web Registration vs School/File Registration)
+  const initiateCheckIn = (targetAttendee: Attendee) => {
+    const isWebRegistration =
+      targetAttendee.isWebIndividual === true ||
+      targetAttendee.registrationSource === 'web_registration' ||
+      (!targetAttendee.schoolType && targetAttendee.executivesCount === undefined && targetAttendee.teachersCount === undefined && targetAttendee.studentsCount === undefined);
 
-    if (foundIdx !== -1) {
-      const found = attendees[foundIdx];
-      if (found.checkedIn) {
-        setScannerMessage({
-          type: 'info',
-          text: `⚠️ ผู้เข้าร่วม ${found.participantCode} (${found.firstName} ${found.lastName}) เช็คอินเข้างานแล้วล่วงหน้า`,
-        });
-        return;
-      }
-
-      const updated = [...attendees];
+    // If registered via website, check in immediately without popup ("ถ้าเป็นคนที่ลงทะเบียนในเว็บไม่ต้องถาม")
+    if (isWebRegistration) {
       const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
-      const updatedItem = {
-        ...found,
+      const updatedItem: Attendee = {
+        ...targetAttendee,
         checkedIn: true,
         checkedInAt: nowStr,
+        actualExecutivesCount: targetAttendee.executivesCount || 0,
+        actualTeachersCount: targetAttendee.teachersCount || 0,
+        actualStudentsCount: targetAttendee.studentsCount || (targetAttendee.attendeeCount || 1),
+        actualAttendeeCount: targetAttendee.attendeeCount || 1,
       };
-      updated[foundIdx] = updatedItem;
 
-      setAttendees(updated);
+      setAttendees((prev) => prev.map((a) => (a.id === targetAttendee.id ? updatedItem : a)));
       saveAttendeeToFirestore(updatedItem);
+
       setScannerMessage({
         type: 'success',
-        text: `🎉 บันทึกการเช็คอินสำเร็จ! ${found.participantCode} - คุณ${found.firstName} ${found.lastName} (${found.organization})`,
+        text: `🎉 บันทึกการเช็คอินสำเร็จ! ${targetAttendee.participantCode} - คุณ${targetAttendee.firstName} ${targetAttendee.lastName} (${targetAttendee.organization || targetAttendee.schoolName}) [ลงทะเบียนผ่านเว็บไซต์ - 1 คน]`,
       });
 
       addAuditLog(
-        'สแกน QR Code เช็คอิน',
-        `ผู้เข้าร่วม ${found.participantCode} (${found.firstName} ${found.lastName}) เช็คอินสำเร็จ`
+        'สแกน QR Code เช็คอิน (เว็บไซต์)',
+        `ผู้ลงทะเบียนผ่านเว็บไซต์ ${targetAttendee.participantCode} (${targetAttendee.firstName} ${targetAttendee.lastName}) เช็คอินสำเร็จ 1 คน`
       );
+      return;
+    }
+
+    // For imported file / school registrations with multiple attendees, open the breakdown modal
+    setCheckingInAttendee(targetAttendee);
+    setActualExecCount(
+      targetAttendee.actualExecutivesCount !== undefined
+        ? targetAttendee.actualExecutivesCount
+        : (targetAttendee.executivesCount !== undefined ? targetAttendee.executivesCount : 0)
+    );
+    setActualTeachersCount(
+      targetAttendee.actualTeachersCount !== undefined
+        ? targetAttendee.actualTeachersCount
+        : (targetAttendee.teachersCount !== undefined ? targetAttendee.teachersCount : 0)
+    );
+    setActualStudentsCount(
+      targetAttendee.actualStudentsCount !== undefined
+        ? targetAttendee.actualStudentsCount
+        : (targetAttendee.studentsCount !== undefined ? targetAttendee.studentsCount : (targetAttendee.attendeeCount || 1))
+    );
+    setActualCheckinNotes(targetAttendee.actualNotes || '');
+  };
+
+  // Submit Actual Attendance Check-In from Modal
+  const handleConfirmActualAttendance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkingInAttendee) return;
+
+    setIsSavingCheckIn(true);
+    try {
+      const exec = Math.max(0, Number(actualExecCount) || 0);
+      const teacher = Math.max(0, Number(actualTeachersCount) || 0);
+      const stud = Math.max(0, Number(actualStudentsCount) || 0);
+      const totalActual = exec + teacher + stud;
+
+      const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+      const updatedItem: Attendee = {
+        ...checkingInAttendee,
+        checkedIn: true,
+        checkedInAt: nowStr,
+        actualExecutivesCount: exec,
+        actualTeachersCount: teacher,
+        actualStudentsCount: stud,
+        actualAttendeeCount: totalActual,
+        actualNotes: actualCheckinNotes.trim(),
+      };
+
+      setAttendees((prev) => prev.map((a) => (a.id === checkingInAttendee.id ? updatedItem : a)));
+      await saveAttendeeToFirestore(updatedItem);
+
+      setScannerMessage({
+        type: 'success',
+        text: `🎉 บันทึกการเช็คอินสำเร็จ! ${checkingInAttendee.participantCode} - ${checkingInAttendee.schoolName || checkingInAttendee.organization} (มาร่วมจริงรวม ${totalActual} คน: ผบ. ${exec}, ครู ${teacher}, นร. ${stud})`,
+      });
+
+      addAuditLog(
+        'บันทึกยอดเช็คอินจริงหน้างาน',
+        `สถานศึกษา ${checkingInAttendee.participantCode} (${checkingInAttendee.schoolName || checkingInAttendee.organization}) บันทึกยอดผู้มาร่วมจริง ${totalActual} คน (ผู้บริหาร ${exec}, ครู ${teacher}, นร. ${stud})`
+      );
+
+      setCheckingInAttendee(null);
+    } catch (err) {
+      console.error('Error confirming check-in:', err);
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูลการเช็คอิน');
+    } finally {
+      setIsSavingCheckIn(false);
+    }
+  };
+
+  // Handle QR Scan / Code Check-in
+  const handleCheckIn = (codeOrEmail: string) => {
+    const codeClean = codeOrEmail.trim().split('|')[0].toUpperCase();
+    const found = attendees.find(
+      (a) =>
+        a.participantCode.toUpperCase() === codeClean ||
+        a.email.toLowerCase() === codeOrEmail.trim().toLowerCase() ||
+        (a.phone && a.phone.replace(/\D/g, '') === codeOrEmail.trim().replace(/\D/g, '')) ||
+        (a.coordinatorPhone && a.coordinatorPhone.replace(/\D/g, '') === codeOrEmail.trim().replace(/\D/g, ''))
+    );
+
+    if (found) {
+      initiateCheckIn(found);
     } else {
       setScannerMessage({
         type: 'error',
-        text: `❌ ไม่พบรหัสผู้เข้าร่วม "${codeOrEmail}" ในระบบ`,
+        text: `❌ ไม่พบรหัสผู้เข้าร่วมหรือเบอร์โทร "${codeOrEmail}" ในระบบ`,
       });
     }
   };
 
-  // Toggle checkin directly from table
-  const handleToggleCheckIn = (attendeeId: string) => {
+  // Toggle or Edit checkin directly from table
+  const handleToggleCheckIn = (attendee: Attendee) => {
+    if (attendee.checkedIn) {
+      // If already checked in, offer to re-check actual attendees or uncheck
+      initiateCheckIn(attendee);
+    } else {
+      initiateCheckIn(attendee);
+    }
+  };
+
+  const handleCancelCheckIn = (attendeeId: string) => {
     const updated = attendees.map((a) => {
       if (a.id === attendeeId) {
-        const nextState = !a.checkedIn;
-        const nowStr = nextState ? new Date().toISOString().replace('T', ' ').substring(0, 19) : undefined;
         addAuditLog(
-          'เปลี่ยนสถานะการเช็คอิน',
-          `ปรับเปลี่ยนสถานะ ${a.participantCode} (${a.firstName}) เป็น ${nextState ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน'}`
+          'ยกเลิกสถานะเช็คอิน',
+          `ยกเลิกการเช็คอินของ ${a.participantCode} (${a.schoolName || a.firstName})`
         );
-        const updatedAttendee = { ...a, checkedIn: nextState, checkedInAt: nowStr };
+        const updatedAttendee = {
+          ...a,
+          checkedIn: false,
+          checkedInAt: undefined,
+          actualExecutivesCount: undefined,
+          actualTeachersCount: undefined,
+          actualStudentsCount: undefined,
+          actualAttendeeCount: undefined,
+        };
         saveAttendeeToFirestore(updatedAttendee);
         return updatedAttendee;
       }
@@ -337,25 +459,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAttendees(updated);
   };
 
-  // Add Attendee manually by Admin
+  // Add Attendee (School / Educational Institution Entry) manually by Admin
   const handleAddAttendeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddAttendeeError('');
-    if (!addAttendeeForm.firstName.trim() || !addAttendeeForm.lastName.trim()) {
-      setAddAttendeeError('กรุณากรอกชื่อและนามสกุล');
+    if (!addAttendeeForm.schoolName.trim()) {
+      setAddAttendeeError('กรุณากรอกชื่อสถานศึกษา (โรงเรียน)');
       return;
     }
-    if (!addAttendeeForm.organization.trim()) {
-      setAddAttendeeError('กรุณากรอกสถาบัน / โรงเรียน / หน่วยงาน');
+    if (!addAttendeeForm.coordinatorName.trim()) {
+      setAddAttendeeError('กรุณากรอกชื่อ - นามสกุล ครูผู้ประสานงาน');
+      return;
+    }
+    if (!addAttendeeForm.coordinatorPhone.trim()) {
+      setAddAttendeeError('กรุณากรอกเบอร์โทรศัพท์ครูผู้ประสานงาน');
       return;
     }
 
     setIsSavingAttendee(true);
     try {
-      const codeNum = Math.floor(1000 + Math.random() * 9000);
-      const participantCode = `PCSHS2026-${codeNum}`;
-      const emailVal = addAttendeeForm.email.trim() || `user_${codeNum}@pcshs-loei.ac.th`;
-      const passVal = addAttendeeForm.password.trim() || (addAttendeeForm.phone.replace(/\D/g, '') || '123456');
+      const participantCode = getNextConsecutiveParticipantCode(attendees);
+      const emailVal = addAttendeeForm.contactEmail.trim() || `school_${Date.now()}@pcshsloei.ac.th`;
+      const passVal = addAttendeeForm.coordinatorPhone.replace(/\D/g, '') || '123456';
+
+      const execCount = Number(addAttendeeForm.executivesCount) || 0;
+      const teacherCount = Number(addAttendeeForm.teachersCount) || 0;
+      const studCount = Number(addAttendeeForm.studentsCount) || 0;
+      const totalCount = (execCount + teacherCount + studCount) || 1;
+
+      const nameParts = addAttendeeForm.coordinatorName.trim().split(/\s+/);
+      const firstName = nameParts[0] || 'ครูผู้ประสานงาน';
+      const lastName = nameParts.slice(1).join(' ') || addAttendeeForm.schoolName.trim();
 
       const newAtt: Attendee = {
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -363,43 +497,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         email: emailVal,
         password: passVal,
         isVerified: true,
-        firstName: addAttendeeForm.firstName.trim(),
-        lastName: addAttendeeForm.lastName.trim(),
-        phone: addAttendeeForm.phone.trim() || '-',
-        status: addAttendeeForm.status,
-        organization: addAttendeeForm.organization.trim(),
-        district: addAttendeeForm.district.trim() || 'เมืองเลย',
-        province: addAttendeeForm.province || 'เลย',
-        attendeeCount: Number(addAttendeeForm.attendeeCount) || 1,
-        transportMethod: addAttendeeForm.transportMethod || 'รถส่วนตัว',
+        firstName,
+        lastName,
+        phone: addAttendeeForm.coordinatorPhone.trim(),
+        status: 'ครู/อาจารย์',
+        organization: addAttendeeForm.schoolName.trim(),
+        district: addAttendeeForm.serviceArea.trim() || 'เมืองเลย',
+        province: addAttendeeForm.serviceArea.includes('หนองบัวลำภู')
+          ? 'หนองบัวลำภู'
+          : addAttendeeForm.serviceArea.includes('อุดรธานี')
+          ? 'อุดรธานี'
+          : addAttendeeForm.serviceArea.includes('หนองคาย')
+          ? 'หนองคาย'
+          : addAttendeeForm.serviceArea.includes('ขอนแก่น')
+          ? 'ขอนแก่น'
+          : 'เลย',
+        attendeeCount: totalCount,
+        transportMethod: 'รถบัสโรงเรียน',
         registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         checkedIn: false,
         qrCodeData: participantCode,
-        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(addAttendeeForm.firstName)}+${encodeURIComponent(addAttendeeForm.lastName)}&background=0D8ABC&color=fff&bold=true`,
+        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(addAttendeeForm.schoolName)}&background=0D8ABC&color=fff&bold=true`,
+
+        // School Specific Fields
+        schoolType: addAttendeeForm.schoolType.trim(),
+        schoolName: addAttendeeForm.schoolName.trim(),
+        serviceArea: addAttendeeForm.serviceArea.trim(),
+        studentType: addAttendeeForm.studentType.trim(),
+        interestedActivities: addAttendeeForm.interestedActivities.trim(),
+        executivesCount: execCount,
+        teachersCount: teacherCount,
+        studentsCount: studCount,
+        coordinatorName: addAttendeeForm.coordinatorName.trim(),
+        coordinatorPhone: addAttendeeForm.coordinatorPhone.trim(),
+        contactEmail: addAttendeeForm.contactEmail.trim(),
+        acceptanceFormUrl: addAttendeeForm.acceptanceFormUrl.trim(),
       };
 
       await saveAttendeeToFirestore(newAtt);
       setAttendees((prev) => [newAtt, ...prev]);
       addAuditLog(
-        'เพิ่มผู้ลงทะเบียนใหม่ (โดยแอดมิน)',
-        `แอดมิน ${currentAdmin.name} เพิ่มผู้เข้าร่วม ${newAtt.participantCode} (${newAtt.firstName} ${newAtt.lastName}) สำเร็จ`
+        'เพิ่มข้อมูลสถานศึกษา/ผู้ลงทะเบียนใหม่',
+        `แอดมิน ${currentAdmin.name} เพิ่มข้อมูล ${newAtt.participantCode} (${newAtt.schoolName} - ผู้ประสานงาน: ${newAtt.coordinatorName}) สำเร็จ (จำนวน ${newAtt.attendeeCount} คน)`
       );
 
       setShowAddAttendeeModal(false);
       setAddAttendeeForm({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        status: 'นักเรียน',
-        organization: '',
-        province: 'เลย',
-        district: 'เมืองเลย',
-        attendeeCount: 1,
-        transportMethod: 'รถส่วนตัว',
-        password: '',
+        schoolType: 'โรงเรียนขยายโอกาสทางการศึกษา',
+        schoolName: '',
+        serviceArea: 'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+        studentType: 'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+        interestedActivities: 'นิทรรศการวิชาการ 8 สาขาวิชา, การประกวดโครงงานวิทยาศาสตร์',
+        executivesCount: 1,
+        teachersCount: 2,
+        studentsCount: 10,
+        coordinatorName: '',
+        coordinatorPhone: '',
+        contactEmail: '',
+        acceptanceFormUrl: '',
       });
-      alert(`✅ เพิ่มผู้ลงทะเบียนสำเร็จ!\n\nรหัสประจำตัว: ${newAtt.participantCode}\nชื่อ: ${newAtt.firstName} ${newAtt.lastName}`);
+      alert(`✅ บันทึกข้อมูลสถานศึกษาและผู้ลงทะเบียนสำเร็จ!\n\nรหัสประจำตัว: ${newAtt.participantCode}\nสถานศึกษา: ${newAtt.schoolName}\nครูผู้ประสานงาน: ${newAtt.coordinatorName}\nยอดผู้เข้าร่วมรวม: ${newAtt.attendeeCount} คน`);
     } catch (err: any) {
       console.error('Error adding attendee:', err);
       setAddAttendeeError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
@@ -433,7 +590,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const newAttendees: Attendee[] = [];
         let skippedCount = 0;
 
-        rawData.forEach((row, idx) => {
+        // Calculate starting consecutive number
+        let currentMaxSeq = 0;
+        attendees.forEach((a) => {
+          const match = (a.participantCode || '').match(/PCSHS(?:2026)?[-_]?(\d+)/i);
+          if (match && match[1]) {
+            const n = parseInt(match[1], 10);
+            if (!isNaN(n) && n > currentMaxSeq && n < 100000) currentMaxSeq = n;
+          }
+        });
+        if (currentMaxSeq === 0) currentMaxSeq = attendees.length;
+
+        rawData.forEach((row) => {
           const getValue = (...keys: string[]) => {
             for (const key of keys) {
               const matchedKey = Object.keys(row).find(
@@ -446,63 +614,101 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             return '';
           };
 
-          let firstName = getValue('ชื่อ', 'firstName', 'first_name', 'First Name', 'ชื่อจริง');
-          let lastName = getValue('นามสกุล', 'lastName', 'last_name', 'Last Name');
-
-          const fullName = getValue('ชื่อ - นามสกุล', 'ชื่อ-นามสกุล', 'ชื่อ นามสกุล', 'Name', 'Full Name');
-          if ((!firstName || !lastName) && fullName) {
-            const parts = fullName.split(/\s+/);
-            firstName = firstName || parts[0] || '';
-            lastName = lastName || parts.slice(1).join(' ') || '';
+          // School Institution specific columns
+          const schoolType = getValue('ประเภทของโรงเรียน', 'ประเภทโรงเรียน', 'schoolType') || 'โรงเรียนทั่วไป';
+          const schoolName = getValue('ชื่อสถานศึกษา (โรงเรียน)', 'ชื่อสถานศึกษา', 'ชื่อโรงเรียน', 'โรงเรียน', 'หน่วยงาน / สถาบัน', 'หน่วยงาน', 'สถาบัน', 'schoolName', 'organization');
+          const serviceArea = getValue('โรงเรียนตั้งอยู่เขตพื้นที่บริการ', 'เขตพื้นที่บริการ', 'serviceArea', 'อำเภอ / เขต', 'อำเภอ') || 'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู';
+          const studentType = getValue('ประเภทนักเรียนที่เข้าร่วม', 'ประเภทนักเรียน', 'studentType') || 'นักเรียนทั่วไป';
+          const interestedActivities = getValue('รายการกิจกรรมที่สนใจเข้าร่วม', 'กิจกรรมที่สนใจ', 'กิจกรรม', 'interestedActivities') || 'นิทรรศการวิชาการ 8 สาขาวิชา';
+          
+          const execCount = parseInt(getValue('จำนวนผู้บริหารสถานศึกษาที่เข้าร่วม', 'จำนวนผู้บริหาร', 'executivesCount')) || 0;
+          const teacherCount = parseInt(getValue('จำนวนครูหรือบุคลากรทางการศึกษาที่เข้าร่วม', 'จำนวนครู', 'teachersCount')) || 0;
+          const studCount = parseInt(getValue('จำนวนนักเรียนที่เข้าร่วม', 'จำนวนนักเรียน', 'studentsCount')) || 0;
+          
+          // จำนวนผู้เข้าร่วมจากไฟล์ที่เพิ่มใหม่ นำจำนวน ผู้บริหาร ครู และนักเรียน มารวมกัน
+          const sumFromBreakdown = execCount + teacherCount + studCount;
+          let attendeeCountRaw = parseInt(getValue('จำนวนผู้ร่วมงาน (คน)', 'จำนวนผู้ร่วมงาน', 'จำนวนผู้ร่วม', 'จำนวน', 'attendeeCount', 'count')) || 0;
+          if (sumFromBreakdown > 0) {
+            attendeeCountRaw = sumFromBreakdown;
+          } else if (attendeeCountRaw <= 0) {
+            attendeeCountRaw = 1;
           }
 
-          if (!firstName) {
+          let coordinatorName = getValue('ชื่อ - นามสกุล  ครูผู้ประสานงาน', 'ชื่อ - นามสกุล ครูผู้ประสานงาน', 'ชื่อ-นามสกุล ครูผู้ประสานงาน', 'ครูผู้ประสานงาน', 'coordinatorName');
+          let coordinatorPhone = getValue('เบอร์โทรศัพท์ (ครูผู้ประสานงาน)', 'เบอร์โทรศัพท์ครูผู้ประสานงาน', 'เบอร์โทรศัพท์', 'เบอร์โทร', 'coordinatorPhone', 'phone', 'tel') || '0800000000';
+          let contactEmail = getValue('อีเมลสำหรับติดต่อกลับ', 'อีเมลติดต่อกลับ', 'อีเมล', 'contactEmail', 'email', 'Email');
+          const acceptanceFormUrl = getValue('ลิงก์แบบตอบรับเข้าร่วมงาน', 'ลิงก์แบบตอบรับ', 'แบบตอบรับ', 'acceptanceFormUrl', 'responseUrl', 'link');
+
+          // Fallback if legacy individual format
+          let firstName = getValue('ชื่อ', 'firstName', 'first_name', 'ชื่อจริง');
+          let lastName = getValue('นามสกุล', 'lastName', 'last_name');
+          const fullName = getValue('ชื่อ - นามสกุล', 'ชื่อ-นามสกุล', 'ชื่อ นามสกุล', 'Name', 'Full Name');
+          
+          if (!coordinatorName && (firstName || fullName)) {
+            coordinatorName = fullName || `${firstName} ${lastName}`.trim();
+          }
+
+          if (!coordinatorName && !schoolName) {
             skippedCount++;
             return;
           }
 
-          const email = getValue('อีเมล', 'email', 'Email', 'E-mail') || `user_${Date.now()}_${idx}@pcshsloei.ac.th`;
-          const phone = getValue('เบอร์โทร', 'เบอร์โทรศัพท์', 'phone', 'Phone', 'tel', 'Tel') || '0800000000';
-          const organization = getValue('หน่วยงาน', 'สถาบัน', 'โรงเรียน', 'หน่วยงาน / สถาบัน', 'organization', 'school') || 'ไม่ระบุสถาบัน';
-          const district = getValue('อำเภอ', 'เขต', 'อำเภอ / เขต', 'district') || 'เมือง';
-          const province = getValue('จังหวัด', 'province') || 'เลย';
-          const statusRaw = getValue('สถานภาพ', 'สถานะ', 'status', 'Role') as any;
-          const status = ['ครู/อาจารย์', 'ผู้ปกครอง', 'บุคคลทั่วไป', 'นักเรียน'].includes(statusRaw)
-            ? statusRaw
-            : 'บุคคลทั่วไป';
-
-          const attendeeCountRaw = parseInt(getValue('จำนวนผู้ร่วมงาน', 'จำนวน', 'attendeeCount', 'count')) || 1;
-          const transportRaw = getValue('วิธีการเดินทาง', 'การเดินทาง', 'transportMethod') as any;
-          const transportMethod = ['รถส่วนตัว', 'รถบัสโรงเรียน', 'รถตู้สถาบัน', 'รถสาธารณะ', 'อื่นๆ'].includes(transportRaw)
-            ? transportRaw
-            : 'รถส่วนตัว';
-
-          let participantCode = getValue('รหัสประจำตัว', 'รหัส', 'participantCode', 'code');
-          if (!participantCode) {
-            const randomCode = Math.floor(1000 + Math.random() * 9000);
-            participantCode = `PCSHS2026-${randomCode}`;
+          if (!firstName || !lastName) {
+            const parts = (coordinatorName || schoolName).split(/\s+/);
+            firstName = parts[0] || 'ผู้เข้าร่วม';
+            lastName = parts.slice(1).join(' ') || schoolName || 'ทั่วไป';
           }
 
-          const id = `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`;
+          const orgName = schoolName || 'สถานศึกษาทั่วไป';
+          currentMaxSeq += 1;
+          const participantCode = `PCSHS-${String(currentMaxSeq).padStart(4, '0')}`;
+          const email = contactEmail || `school_${Date.now()}_${currentMaxSeq}@pcshsloei.ac.th`;
+          const phone = coordinatorPhone || '0800000000';
+
+          const id = `att_${Date.now()}_${currentMaxSeq}_${Math.random().toString(36).substring(2, 6)}`;
           const registeredAt = new Date().toLocaleString('th-TH');
 
           const newAttendee: Attendee = {
             id,
             participantCode,
             email,
-            password: phone,
+            password: phone.replace(/\D/g, '') || '123456',
             firstName,
             lastName,
             phone,
-            status,
-            organization,
-            district,
-            province,
+            status: 'ครู/อาจารย์',
+            organization: orgName,
+            district: serviceArea || 'เมืองเลย',
+            province: serviceArea.includes('หนองบัวลำภู')
+              ? 'หนองบัวลำภู'
+              : serviceArea.includes('อุดรธานี')
+              ? 'อุดรธานี'
+              : serviceArea.includes('หนองคาย')
+              ? 'หนองคาย'
+              : serviceArea.includes('ขอนแก่น')
+              ? 'ขอนแก่น'
+              : 'เลย',
             attendeeCount: attendeeCountRaw,
-            transportMethod,
+            transportMethod: 'รถบัสโรงเรียน',
             registeredAt,
             checkedIn: false,
             qrCodeData: participantCode,
+            registrationSource: 'excel_import',
+            isWebIndividual: false,
+
+            // School Fields
+            schoolType,
+            schoolName: orgName,
+            serviceArea,
+            studentType,
+            interestedActivities,
+            executivesCount: execCount,
+            teachersCount: teacherCount,
+            studentsCount: studCount,
+            coordinatorName: coordinatorName || `${firstName} ${lastName}`,
+            coordinatorPhone: phone,
+            contactEmail: email,
+            acceptanceFormUrl,
           };
 
           newAttendees.push(newAttendee);
@@ -512,10 +718,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (newAttendees.length > 0) {
           setAttendees((prev) => [...prev, ...newAttendees]);
           addAuditLog(
-            'นำเข้าข้อมูล',
-            `นำเข้าข้อมูลผู้ลงทะเบียนสำเร็จจำนวน ${newAttendees.length} รายการจากไฟล์ Excel (.xlsx)`
+            'นำเข้าข้อมูลสถานศึกษา/ผู้ลงทะเบียน',
+            `นำเข้าข้อมูลสำเร็จจำนวน ${newAttendees.length} รายการจากไฟล์ Excel พร้อมกำหนดรหัส PCSHS-XXXX ต่อเนื่องเรียบร้อย`
           );
-          alert(`✅ นำเข้าข้อมูลผู้ลงทะเบียนสำเร็จจำนวน ${newAttendees.length} รายการ${skippedCount > 0 ? ` (ข้าม ${skippedCount} รายการที่ไม่สมบูรณ์)` : ''}`);
+          alert(`✅ นำเข้าข้อมูลผู้ลงทะเบียนสำเร็จจำนวน ${newAttendees.length} รายการ${skippedCount > 0 ? ` (ข้าม ${skippedCount} รายการที่ไม่สมบูรณ์)` : ''}\n\nระบบกำหนดรหัสต่อเนื่อง (PCSHS-XXXX) ให้อัตโนมัติเรียบร้อย`);
         } else {
           alert('⚠️ ไม่พบรายการข้อมูลที่สมบูรณ์ในไฟล์ Excel');
         }
@@ -534,36 +740,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleExportXLSX = () => {
     const headers = [
       'รหัสประจำตัว (Participant Code)',
-      'ชื่อ',
-      'นามสกุล',
-      'อีเมล (Email)',
-      'เบอร์โทรศัพท์ (Phone)',
-      'สถานภาพ',
-      'หน่วยงาน / สถาบัน',
-      'อำเภอ / เขต',
-      'จังหวัด',
-      'จำนวนผู้ร่วมงาน (คน)',
-      'วิธีการเดินทาง',
-      'วันที่ลงทะเบียน',
+      'ประเภทของโรงเรียน',
+      'ชื่อสถานศึกษา (โรงเรียน)',
+      'โรงเรียนตั้งอยู่เขตพื้นที่บริการ',
+      'ประเภทนักเรียนที่เข้าร่วม',
+      'รายการกิจกรรมที่สนใจเข้าร่วม',
+      'จำนวนผู้บริหารสถานศึกษาที่แจ้งลงทะเบียน (คน)',
+      'จำนวนครูที่แจ้งลงทะเบียน (คน)',
+      'จำนวนนักเรียนที่แจ้งลงทะเบียน (คน)',
+      'จำนวนผู้เข้าร่วมแจ้งไว้รวม (คน)',
       'สถานะเช็คอิน',
       'เวลาเช็คอิน',
+      'จำนวนผู้บริหารที่มาร่วมจริง (คน)',
+      'จำนวนครูที่มาร่วมจริง (คน)',
+      'จำนวนนักเรียนที่มาร่วมจริง (คน)',
+      'ยอดรวมผู้มาร่วมงานจริงทั้งหมด (คน)',
+      'หมายเหตุการเช็คอิน',
+      'ชื่อ - นามสกุล ครูผู้ประสานงาน',
+      'เบอร์โทรศัพท์ (ครูผู้ประสานงาน)',
+      'อีเมลสำหรับติดต่อกลับ',
+      'ลิงก์แบบตอบรับเข้าร่วมงาน',
+      'วันที่ลงทะเบียน',
     ];
 
     const dataRows = attendees.map((a) => [
       a.participantCode,
-      a.firstName,
-      a.lastName,
-      a.email,
-      a.phone,
-      a.status,
-      a.organization,
-      a.district,
-      a.province,
-      a.attendeeCount,
-      a.transportMethod,
-      a.registeredAt,
+      a.schoolType || a.status || '-',
+      a.schoolName || a.organization,
+      a.serviceArea || `${a.district} ${a.province}`,
+      a.studentType || '-',
+      a.interestedActivities || '-',
+      a.executivesCount !== undefined ? a.executivesCount : '-',
+      a.teachersCount !== undefined ? a.teachersCount : '-',
+      a.studentsCount !== undefined ? a.studentsCount : '-',
+      a.attendeeCount || 1,
       a.checkedIn ? 'เช็คอินแล้ว (YES)' : 'ยังไม่เช็คอิน (NO)',
       a.checkedInAt || '-',
+      a.checkedIn ? (a.actualExecutivesCount !== undefined ? a.actualExecutivesCount : (a.executivesCount ?? '-')) : '-',
+      a.checkedIn ? (a.actualTeachersCount !== undefined ? a.actualTeachersCount : (a.teachersCount ?? '-')) : '-',
+      a.checkedIn ? (a.actualStudentsCount !== undefined ? a.actualStudentsCount : (a.studentsCount ?? '-')) : '-',
+      a.checkedIn ? (a.actualAttendeeCount !== undefined ? a.actualAttendeeCount : (a.attendeeCount ?? '-')) : '-',
+      a.actualNotes || '-',
+      a.coordinatorName || `${a.firstName} ${a.lastName}`,
+      a.coordinatorPhone || a.phone,
+      a.contactEmail || a.email,
+      a.acceptanceFormUrl || '-',
+      a.registeredAt,
     ]);
 
     const worksheet = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
@@ -575,106 +797,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const val = String(row[i] || '');
         if (val.length > maxLen) maxLen = val.length;
       });
-      return { wch: Math.min(Math.max(maxLen + 4, 12), 40) };
+      return { wch: Math.min(Math.max(maxLen + 4, 14), 45) };
     });
     worksheet['!cols'] = colWidths;
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'ผู้ลงทะเบียน');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'ข้อมูลสถานศึกษาผู้ลงทะเบียน');
 
-    const fileName = `PCSHS_Loei_OpenHouse_Attendees_${new Date().toISOString().substring(0, 10)}.xlsx`;
+    const fileName = `PCSHS_Loei_OpenHouse_School_Registrations_${new Date().toISOString().substring(0, 10)}.xlsx`;
     XLSX.writeFile(workbook, fileName);
 
-    addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ Excel (.xlsx) ข้อมูลผู้เข้าร่วมงานทั้งหมด');
+    addAuditLog('Export ข้อมูล', 'ส่งออกไฟล์ Excel (.xlsx) ข้อมูลสถานศึกษาผู้เข้าร่วมงานทั้งหมด 17 คอลัมน์');
   };
 
-  // Download example Excel template for importing multiple attendees (.XLSX)
+  // Download example Excel template for importing multiple school attendees (.XLSX)
   const handleDownloadAttendeeTemplate = () => {
     const headers = [
-      'ชื่อ',
-      'นามสกุล',
-      'เบอร์โทรศัพท์',
-      'อีเมล',
-      'สถานภาพ',
-      'หน่วยงาน / สถาบัน',
-      'อำเภอ / เขต',
-      'จังหวัด',
-      'จำนวนผู้ร่วมงาน',
-      'วิธีการเดินทาง',
+      'ประเภทของโรงเรียน',
+      'ชื่อสถานศึกษา (โรงเรียน)',
+      'โรงเรียนตั้งอยู่เขตพื้นที่บริการ',
+      'ประเภทนักเรียนที่เข้าร่วม',
+      'รายการกิจกรรมที่สนใจเข้าร่วม',
+      'จำนวนผู้บริหารสถานศึกษาที่เข้าร่วม',
+      'จำนวนครูหรือบุคลากรทางการศึกษาที่เข้าร่วม',
+      'จำนวนนักเรียนที่เข้าร่วม',
+      'ชื่อ - นามสกุล  ครูผู้ประสานงาน',
+      'เบอร์โทรศัพท์ (ครูผู้ประสานงาน)',
+      'อีเมลสำหรับติดต่อกลับ',
+      'ลิงก์แบบตอบรับเข้าร่วมงาน',
     ];
 
     const sampleRows = [
       [
-        'พริมพลอย',
-        'จันทร์',
+        'โรงเรียนมัธยมศึกษา (สพม.)',
+        'โรงเรียนหนองบัวพิทยาคาร',
+        'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+        'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+        'การแข่งขันจรวดขวดน้ำประเภทแม่นยำ, การแข่งขันหุ่นยนต์กู้ภัย',
+        1,
+        3,
+        20,
+        'ครูพรทิพย์ สุวรรณรัตน์',
         '0812604295',
         'philincansri@gmail.com',
-        'นักเรียน',
-        'โรงเรียนหนองบัวพิทยาคาร',
-        'เมืองหนองบัวลำภู',
-        'หนองบัวลำภู',
-        1,
-        'รถบัสโรงเรียน',
+        'https://drive.google.com/file/d/example-response-letter-1',
       ],
       [
-        'ปิ่นมณี',
-        'ชัยสมบัติ',
+        'โรงเรียนขยายโอกาสทางการศึกษา',
+        'โรงเรียนบ้านกุดฮู',
+        'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+        'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+        'นิทรรศการวิชาการ 8 สาขาวิชา, การประกวดโครงงานวิทยาศาสตร์',
+        1,
+        2,
+        15,
+        'ครูสมศักดิ์ สายบุญ',
         '0951204660',
         'pra84774@gmail.com',
-        'นักเรียน',
-        'โรงเรียนบ้านกุดฮู',
-        'โนนสัง',
-        'หนองบัวลำภู',
-        1,
-        'รถส่วนตัว',
+        'https://drive.google.com/file/d/example-response-letter-2',
       ],
       [
-        'กุลนิดา',
-        'สุทธิแพทย์',
+        'โรงเรียนประถมศึกษา (สพป.)',
+        'โรงเรียนบ้านหมากแข้ง',
+        'จังหวัดอุดรธานี',
+        'นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6)',
+        'การทดลองปฏิบัติการวิทยาศาสตร์ (Lab Workshop), กิจกรรมดาราศาสตร์',
+        1,
+        2,
+        12,
+        'ครูรุ่งทิพย์ มงคลแพทย์',
         '0910644809',
         'ruttanadpc8@gmail.com',
-        'นักเรียน',
-        'โรงเรียนบ้านหมากแข้ง',
-        'เมืองอุดรธานี',
-        'อุดรธานี',
-        1,
-        'รถตู้สถาบัน',
+        'https://drive.google.com/file/d/example-response-letter-3',
       ],
       [
-        'สมชาย',
-        'วิชาการดี',
+        'โรงเรียนมัธยมศึกษา (สพม.)',
+        'โรงเรียนเลยพิทยาคม',
+        'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+        'นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)',
+        'การประกวดโครงงานวิทยาศาสตร์และนวัตกรรม, นิทรรศการฟิสิกส์',
+        2,
+        4,
+        30,
+        'ครูวิชัย เกียรติวิทยา',
         '0891234567',
         'somchai.teacher@school.ac.th',
-        'ครู/อาจารย์',
-        'โรงเรียนเลยพิทยาคม',
-        'เมืองเลย',
-        'เลย',
-        5,
-        'รถบัสโรงเรียน',
-      ],
-      [
-        'วิภาดา',
-        'รักบุตร',
-        '0869876543',
-        'wiphada.p@gmail.com',
-        'ผู้ปกครอง',
-        'ผู้ปกครองนักเรียน',
-        'วังสะพุง',
-        'เลย',
-        3,
-        'รถส่วนตัว',
-      ],
-      [
-        'ธนกฤต',
-        'เทคโนโลยี',
-        '0813579246',
-        'thanakrit.tech@outlook.com',
-        'บุคคลทั่วไป',
-        'ประชาชนทั่วไป',
-        'เชียงคาน',
-        'เลย',
-        2,
-        'รถสาธารณะ',
+        'https://drive.google.com/file/d/example-response-letter-4',
       ],
     ];
 
@@ -682,49 +890,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     // Set column widths
     worksheet['!cols'] = [
-      { wch: 18 }, // ชื่อ
-      { wch: 20 }, // นามสกุล
-      { wch: 16 }, // เบอร์โทรศัพท์
-      { wch: 28 }, // อีเมล
-      { wch: 16 }, // สถานภาพ
-      { wch: 30 }, // หน่วยงาน / สถาบัน
-      { wch: 20 }, // อำเภอ / เขต
-      { wch: 18 }, // จังหวัด
-      { wch: 18 }, // จำนวนผู้ร่วมงาน
-      { wch: 18 }, // วิธีการเดินทาง
+      { wch: 28 }, // ประเภทของโรงเรียน
+      { wch: 30 }, // ชื่อสถานศึกษา (โรงเรียน)
+      { wch: 35 }, // โรงเรียนตั้งอยู่เขตพื้นที่บริการ
+      { wch: 32 }, // ประเภทนักเรียนที่เข้าร่วม
+      { wch: 45 }, // รายการกิจกรรมที่สนใจเข้าร่วม
+      { wch: 26 }, // จำนวนผู้บริหารสถานศึกษาที่เข้าร่วม
+      { wch: 32 }, // จำนวนครูหรือบุคลากรทางการศึกษาที่เข้าร่วม
+      { wch: 24 }, // จำนวนนักเรียนที่เข้าร่วม
+      { wch: 28 }, // ชื่อ - นามสกุล  ครูผู้ประสานงาน
+      { wch: 24 }, // เบอร์โทรศัพท์ (ครูผู้ประสานงาน)
+      { wch: 30 }, // อีเมลสำหรับติดต่อกลับ
+      { wch: 45 }, // ลิงก์แบบตอบรับเข้าร่วมงาน
     ];
 
     // Sheet 2: Instructions & Supported Values
-    const instructionHeaders = ['หัวข้อ / คอลัมน์', 'ความสำคัญ', 'ตัวอย่างค่าที่รองรับ / คำอธิบาย'];
+    const instructionHeaders = ['หัวข้อ / คอลัมน์', 'ความสำคัญ', 'คำอธิบาย / ตัวอย่างค่าที่แนะนำ'];
     const instructionRows = [
-      ['ชื่อ', 'จำเป็น (Required)', 'ระบุชื่อจริง (เช่น พริมพลอย, สมชาย)'],
-      ['นามสกุล', 'จำเป็น (Required)', 'ระบุนามสกุล (เช่น จันทร์, ใจดี)'],
-      ['เบอร์โทรศัพท์', 'แนะนำ', 'เบอร์โทรศัพท์ 10 หลัก (เช่น 0812604295)'],
-      ['อีเมล', 'แนะนำ', 'อีเมลสำหรับเข้าสู่ระบบ (หากเว้นว่าง ระบบจะสร้างให้อัตโนมัติ)'],
-      ['สถานภาพ', 'แนะนำ', 'เลือกอย่างใดอย่างหนึ่ง: นักเรียน, ครู/อาจารย์, ผู้ปกครอง, บุคคลทั่วไป'],
-      ['หน่วยงาน / สถาบัน', 'แนะนำ', 'ชื่อโรงเรียน สถาบัน หรือหน่วยงานต้นสังกัด'],
-      ['อำเภอ / เขต', 'แนะนำ', 'อำเภอที่ตั้งของหน่วยงานหรือที่อยู่ (เช่น เมืองเลย, วังสะพุง)'],
-      ['จังหวัด', 'แนะนำ', 'จังหวัด (เช่น เลย, หนองบัวลำภู, อุดรธานี, ขอนแก่น)'],
-      ['จำนวนผู้ร่วมงาน', 'แนะนำ', 'ตัวเลขจำนวนผู้ร่วมเดินทาง เช่น 1, 2, 5'],
-      ['วิธีการเดินทาง', 'แนะนำ', 'เลือกอย่างใดอย่างหนึ่ง: รถส่วนตัว, รถบัสโรงเรียน, รถตู้สถาบัน, รถสาธารณะ, อื่นๆ'],
-      ['หมายเหตุเกี่ยวกับรหัสผู้เข้าร่วม', 'อัตโนมัติ', 'ระบบจะสร้างรหัสประจำตัว (เช่น PCSHS2026-XXXX) และ QR Code ให้อัตโนมัติเมื่อนำเข้าข้อมูล'],
+      ['ประเภทของโรงเรียน', 'จำเป็น', 'เช่น โรงเรียนขยายโอกาสทางการศึกษา, โรงเรียนมัธยมศึกษา (สพม.), โรงเรียนประถมศึกษา (สพป.), โรงเรียนเอกชน, โรงเรียนสาธิต'],
+      ['ชื่อสถานศึกษา (โรงเรียน)', 'จำเป็น', 'ระบุชื่อเต็มของสถานศึกษา เช่น โรงเรียนหนองบัวพิทยาคาร, โรงเรียนเลยพิทยาคม'],
+      ['โรงเรียนตั้งอยู่เขตพื้นที่บริการ', 'จำเป็น', 'เช่น ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู, นอกเขตพื้นที่บริการ, จังหวัดเลย, จังหวัดหนองบัวลำภู, จังหวัดอุดรธานี'],
+      ['ประเภทนักเรียนที่เข้าร่วม', 'จำเป็น', 'เช่น นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6), นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3), นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)'],
+      ['รายการกิจกรรมที่สนใจเข้าร่วม', 'แนะนำ', 'เช่น การแข่งขันจรวดขวดน้ำ, การแข่งขันหุ่นยนต์, การประกวดโครงงานวิทยาศาสตร์, นิทรรศการ 8 สาขาวิชา'],
+      ['จำนวนผู้บริหารสถานศึกษาที่เข้าร่วม', 'ตัวเลข', 'ระบุจำนวนผู้บริหาร (คน) เช่น 1, 2'],
+      ['จำนวนครูหรือบุคลากรทางการศึกษาที่เข้าร่วม', 'ตัวเลข', 'ระบุจำนวนครูหรือบุคลากร (คน) เช่น 2, 4'],
+      ['จำนวนนักเรียนที่เข้าร่วม', 'ตัวเลข', 'ระบุจำนวนนักเรียน (คน) เช่น 15, 20, 30'],
+      ['ชื่อ - นามสกุล  ครูผู้ประสานงาน', 'จำเป็น', 'ชื่อและนามสกุลของครูผู้ประสานงานหลักในการนำนักเรียนเข้าร่วม'],
+      ['เบอร์โทรศัพท์ (ครูผู้ประสานงาน)', 'จำเป็น', 'เบอร์โทรศัพท์ 10 หลักสำหรับติดต่อประสานงาน'],
+      ['อีเมลสำหรับติดต่อกลับ', 'แนะนำ', 'อีเมลสำหรับส่งเอกสารและรับบัตรเข้าร่วมงาน'],
+      ['ลิงก์แบบตอบรับเข้าร่วมงาน', 'แนะนำ', 'ลิงก์ Google Drive หรือ URL ไฟล์หนังสือตอบรับเข้าร่วมงาน (ถ้ามี)'],
+      ['หมายเหตุเกี่ยวกับรหัสประจำตัว', 'อัตโนมัติ', 'ระบบจะสร้างรหัสประจำตัวต่อเนื่อง (PCSHS-0001, PCSHS-0002, ...) และ QR Code ให้อัตโนมัติโดยไม่สุ่มตัวเลข'],
     ];
 
     const instructionSheet = XLSX.utils.aoa_to_sheet([instructionHeaders, ...instructionRows]);
     instructionSheet['!cols'] = [
-      { wch: 25 },
-      { wch: 20 },
-      { wch: 60 },
+      { wch: 35 },
+      { wch: 18 },
+      { wch: 70 },
     ];
 
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'แบบฟอร์มข้อมูลผู้ลงทะเบียน');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'แบบฟอร์มข้อมูลสถานศึกษา');
     XLSX.utils.book_append_sheet(workbook, instructionSheet, 'คำแนะนำการกรอกข้อมูล');
 
-    const fileName = 'แบบฟอร์มตัวอย่าง_นำเข้าข้อมูลผู้ลงทะเบียน_PCSHS2026.xlsx';
+    const fileName = 'แบบฟอร์มลงทะเบียนสถานศึกษา_OpenHouse_PCSHS.xlsx';
     XLSX.writeFile(workbook, fileName);
 
-    addAuditLog('ดาวน์โหลดแบบฟอร์ม', 'ดาวน์โหลดไฟล์ Excel ตัวอย่างสำหรับกรอกข้อมูลผู้ลงทะเบียนหลายคน');
+    addAuditLog('ดาวน์โหลดแบบฟอร์มสถานศึกษา', 'ดาวน์โหลดไฟล์ Excel ตัวอย่างสำหรับกรอกข้อมูลสถานศึกษา 12 คอลัมน์');
   };
 
   // Delete Attendee with Super Admin password confirmation
@@ -1381,23 +1593,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Summary Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  <span className="text-xs text-blue-600 font-bold block mb-1">จำนวนการลงทะเบียนทั้งหมด</span>
-                  <span className="text-3xl font-extrabold text-slate-900">{totalRegistrations} รายการ</span>
-                  <span className="text-xs text-slate-500 block mt-1">รวมยอดผู้เข้าร่วมงาน {totalParticipantsSum} คน</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-blue-600 font-bold block mb-1">ยอดลงทะเบียนแจ้งไว้ล่วงหน้า</span>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200">
+                      {totalRegistrations} สถานศึกษา
+                    </span>
+                  </div>
+                  <span className="text-3xl font-extrabold text-slate-900">{totalParticipantsSum} คน</span>
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
+                    <span>👔 ผบ. {totalRegisteredExecs}</span>
+                    <span>•</span>
+                    <span>🧑‍🏫 ครู {totalRegisteredTeachers}</span>
+                    <span>•</span>
+                    <span>🎒 นร. {totalRegisteredStudents}</span>
+                  </div>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  <span className="text-xs text-orange-600 font-bold block mb-1">สแกนเช็คอินเข้างานแล้ว</span>
-                  <span className="text-3xl font-extrabold text-orange-600">{totalCheckedIn} รายการ</span>
-                  <span className="text-xs text-slate-500 block mt-1">
-                    คิดเป็น {totalRegistrations ? Math.round((totalCheckedIn / totalRegistrations) * 100) : 0}% ของทั้งหมด
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-orange-600 font-bold block mb-1">สแกนเช็คอินเข้างานแล้ว</span>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 font-bold border border-orange-200">
+                      {totalRegistrations ? Math.round((totalCheckedIn / totalRegistrations) * 100) : 0}%
+                    </span>
+                  </div>
+                  <span className="text-3xl font-extrabold text-orange-600">{totalCheckedIn} / {totalRegistrations}</span>
+                  <span className="text-xs text-slate-500 block mt-2 pt-2 border-t border-slate-100">
+                    สถานศึกษาที่เดินทางมาถึงและเช็คอินหน้างานแล้ว
                   </span>
                 </div>
 
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                  <span className="text-xs text-emerald-600 font-bold block mb-1">กิจกรรมและนิทรรศการ</span>
-                  <span className="text-3xl font-extrabold text-emerald-600">{activities.length} กิจกรรม</span>
-                  <span className="text-xs text-slate-500 block mt-1">เปิดรับลงทะเบียนการแข่งขันทางวิชาการ</span>
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-emerald-800 font-bold block mb-1">ยอดผู้มาร่วมงานจริงหน้างาน</span>
+                    <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-bold shadow-2xs">
+                      Actual Attendance
+                    </span>
+                  </div>
+                  <span className="text-3xl font-extrabold text-emerald-700">{totalActualAttendees} คน</span>
+                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-emerald-200/70 text-xs text-emerald-900 font-semibold">
+                    <span>👔 ผบ.จริง {totalActualExecs}</span>
+                    <span>•</span>
+                    <span>🧑‍🏫 ครูจริง {totalActualTeachers}</span>
+                    <span>•</span>
+                    <span>🎒 นร.จริง {totalActualStudents}</span>
+                  </div>
                 </div>
               </div>
 
@@ -1475,7 +1714,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span>สแกน QR Code ประจำตัวผู้เข้าร่วม</span>
                 </h4>
                 <p className="text-xs text-slate-600">
-                  สแกนรหัสผ่านกล้อง หรือ พิมพ์รหัสผู้เข้าร่วม (เช่น <code className="text-orange-600 font-bold">PCSHS2026-1001</code>) เพื่อบันทึกข้อมูลการเข้างานทันที
+                  สแกนรหัสผ่านกล้อง หรือ พิมพ์รหัสผู้เข้าร่วม (เช่น <code className="text-orange-600 font-bold">PCSHS-0001</code>) เพื่อบันทึกข้อมูลการเข้างานทันที
                 </p>
               </div>
 
@@ -1497,7 +1736,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Code Input Form */}
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
                 <label className="block text-xs font-semibold text-slate-700">
-                  พิมพ์รหัสผู้เข้าร่วม (Participant Code) หรือ อีเมล
+                  พิมพ์รหัสผู้เข้าร่วม (Participant Code) หรือ เบอร์โทรครูผู้ประสานงาน
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -1510,7 +1749,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setScannedCodeInput('');
                       }
                     }}
-                    placeholder="PCSHS2026-1001"
+                    placeholder="PCSHS-0001"
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 font-mono text-sm focus:outline-none focus:border-orange-500"
                   />
                   <button
@@ -1607,10 +1846,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                   <div>
                     <h5 className="font-bold text-slate-900 text-xs sm:text-sm">
-                      ต้องการลงทะเบียนหรือเพิ่มข้อมูลผู้เข้าร่วมงานครั้งละหลายคน?
+                      ต้องการลงทะเบียนหรือเพิ่มข้อมูลสถานศึกษาครั้งละหลายแห่ง?
                     </h5>
                     <p className="text-slate-600 mt-0.5 leading-relaxed">
-                      กดปุ่ม <strong>"ไฟล์ Excel ตัวอย่าง (.XLSX)"</strong> เพื่อดาวน์โหลดเทมเพลตมาตรฐาน กรอกรายชื่อผู้เข้าร่วม แล้วกด <strong>"นำเข้าข้อมูล (.XLSX)"</strong> ระบบจะสร้างรหัสประจำตัว (PCSHS2026-XXXX) และ QR Code ให้อัตโนมัติทันที
+                      กดปุ่ม <strong>"ไฟล์ Excel ตัวอย่าง (.XLSX)"</strong> เพื่อดาวน์โหลดเทมเพลตมาตรฐาน 12 คอลัมน์ กรอกรายชื่อสถานศึกษา แล้วกด <strong>"นำเข้าข้อมูล (.XLSX)"</strong> ระบบจะสร้างรหัสประจำตัวต่อเนื่อง (PCSHS-0001, PCSHS-0002, ...) และ QR Code ให้อัตโนมัติทันที
                     </p>
                   </div>
                 </div>
@@ -1620,7 +1859,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="shrink-0 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs cursor-pointer transition-colors flex items-center gap-1.5 text-xs w-full sm:w-auto justify-center"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>โหลดไฟล์ตัวอย่าง</span>
+                  <span>โหลดไฟล์ตัวอย่าง (12 คอลัมน์)</span>
                 </button>
               </div>
 
@@ -1629,11 +1868,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3">รหัสประจำตัว</th>
-                      <th className="px-4 py-3">ชื่อ - นามสกุล</th>
-                      <th className="px-4 py-3">สถาบัน / หน่วยงาน</th>
-                      <th className="px-4 py-3">จังหวัด</th>
-                      <th className="px-4 py-3">สถานภาพ</th>
-                      <th className="px-4 py-3 text-center">จำนวนผู้ร่วม</th>
+                      <th className="px-4 py-3">ชื่อสถานศึกษา (โรงเรียน)</th>
+                      <th className="px-4 py-3">ครูผู้ประสานงาน</th>
+                      <th className="px-4 py-3">ประเภทโรงเรียน / เขตพื้นที่</th>
+                      <th className="px-4 py-3 text-center">ยอดผู้เข้าร่วมรวม</th>
+                      <th className="px-4 py-3 text-center">แบบตอบรับ</th>
                       <th className="px-4 py-3 text-center">สถานะเช็คอิน</th>
                       <th className="px-4 py-3 text-right">การจัดการ</th>
                     </tr>
@@ -1642,27 +1881,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {attendees
                       .filter(
                         (a) =>
-                          a.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          a.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          a.participantCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          a.organization.toLowerCase().includes(searchTerm.toLowerCase())
+                          (a.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.lastName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.participantCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.organization || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.schoolName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.coordinatorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (a.phone || '').includes(searchTerm)
                       )
                       .map((att) => (
                         <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-orange-600">
-                            {att.participantCode}
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-slate-900">
-                            {att.firstName} {att.lastName}
-                            <span className="block text-[10px] text-slate-500 font-normal">
-                              {att.email} | {att.phone}
+                          <td className="px-4 py-3">
+                            <span className="font-mono font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md text-xs">
+                              {att.participantCode}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-slate-700">{att.organization}</td>
-                          <td className="px-4 py-3 text-slate-700">{att.province}</td>
-                          <td className="px-4 py-3 text-slate-700">{att.status}</td>
-                          <td className="px-4 py-3 text-center font-bold text-amber-700">
-                            {att.attendeeCount} คน
+                          <td className="px-4 py-3 font-semibold text-slate-900">
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <Building className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              <span>{att.schoolName || att.organization}</span>
+                            </div>
+                            {att.interestedActivities && (
+                              <span className="block text-[10px] text-slate-500 font-normal line-clamp-1 mt-0.5">
+                                กิจกรรม: {att.interestedActivities}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700">
+                            <div className="font-medium text-slate-800">
+                              {att.coordinatorName || `${att.firstName} ${att.lastName}`}
+                            </div>
+                            <span className="block text-[10px] text-slate-500 font-normal">
+                              📞 {att.coordinatorPhone || att.phone}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 text-xs">
+                            <span className="block font-medium text-slate-800">{att.schoolType || att.status}</span>
+                            <span className="text-[10px] text-slate-500">{att.serviceArea || `${att.district} ${att.province}`}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg text-xs">
+                              {att.attendeeCount} คน
+                            </span>
+                            {(att.executivesCount !== undefined || att.teachersCount !== undefined || att.studentsCount !== undefined) && (
+                              <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-500">
+                                <span>ผบ.{att.executivesCount || 0}</span>
+                                <span>•</span>
+                                <span>ครู{att.teachersCount || 0}</span>
+                                <span>•</span>
+                                <span>นร.{att.studentsCount || 0}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {att.acceptanceFormUrl ? (
+                              <a
+                                href={att.acceptanceFormUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold border border-blue-200 transition-colors"
+                                title="เปิดดูลิงก์แบบตอบรับเข้าร่วมงาน"
+                              >
+                                <LinkIcon className="w-3 h-3 text-blue-500" />
+                                <span>เปิดดู</span>
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">-</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-center">
                             {att.checkedIn ? (
@@ -1677,24 +1962,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setViewingAttendeeDetail(att)}
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="ดูรายละเอียดสถานศึกษาครบ 12 คอลัมน์"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-slate-600" />
+                                <span>ดูข้อมูล</span>
+                              </button>
                               <button
                                 onClick={() => handleToggleCheckIn(att.id)}
-                                className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                                   att.checkedIn
                                     ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    : 'bg-orange-500 hover:bg-orange-600 text-white shadow'
+                                    : 'bg-orange-500 hover:bg-orange-600 text-white shadow-xs'
                                 }`}
                               >
-                                {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้างาน'}
+                                {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้า'}
                               </button>
                               <button
                                 onClick={() => handleOpenDeleteAttendeeModal(att)}
-                                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-xs font-bold border border-red-200/80 transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                                title="ลบข้อมูลผู้ลงทะเบียน (ต้องยืนยันรหัสผ่าน Super Admin)"
+                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-xs font-bold border border-red-200/80 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="ลบข้อมูล (ต้องยืนยันรหัสผ่าน Super Admin)"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
-                                <span>ลบ</span>
                               </button>
                             </div>
                           </td>
@@ -3022,7 +3314,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Add Attendee Modal (Admin Manual Entry) */}
+      {/* Add Attendee Modal (Admin School/Institution Entry) */}
       {showAddAttendeeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
           <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-scale-up">
@@ -3030,14 +3322,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="shrink-0 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-5 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
-                  <UserCheck className="w-5 h-5 text-amber-200" />
+                  <Building className="w-5 h-5 text-amber-200" />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base sm:text-lg leading-tight">
-                    เพิ่มข้อมูลผู้ลงทะเบียน (แอดมิน)
+                    เพิ่มข้อมูลสถานศึกษา / โรงเรียน (แอดมิน)
                   </h3>
                   <p className="text-xs text-amber-100">
-                    บันทึกข้อมูลผู้เข้าร่วมงานเข้าระบบโดยตรง พร้อมสร้างรหัสและ QR Code
+                    บันทึกข้อมูลประเภทสถานศึกษา 12 คอลัมน์ พร้อมสร้างรหัสต่อเนื่องและ QR Code ให้อัตโนมัติ
                   </p>
                 </div>
               </div>
@@ -3058,167 +3350,216 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               )}
 
-              {/* Name Fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {/* Section 1: School Info */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Building className="w-3.5 h-3.5 text-orange-500" />
+                  <span>1. ข้อมูลสถานศึกษา (โรงเรียน)</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ประเภทของโรงเรียน <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={addAttendeeForm.schoolType}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, schoolType: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    >
+                      <option value="โรงเรียนขยายโอกาสทางการศึกษา">โรงเรียนขยายโอกาสทางการศึกษา</option>
+                      <option value="โรงเรียนมัธยมศึกษา (สพม.)">โรงเรียนมัธยมศึกษา (สพม.)</option>
+                      <option value="โรงเรียนประถมศึกษา (สพป.)">โรงเรียนประถมศึกษา (สพป.)</option>
+                      <option value="โรงเรียนเอกชน">โรงเรียนเอกชน</option>
+                      <option value="โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ">โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ชื่อสถานศึกษา (โรงเรียน) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={addAttendeeForm.schoolName}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, schoolName: e.target.value })}
+                      placeholder="เช่น โรงเรียนหนองบัวพิทยาคาร"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ชื่อจริง <span className="text-red-500">*</span>
+                    โรงเรียนตั้งอยู่เขตพื้นที่บริการ <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    value={addAttendeeForm.firstName}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, firstName: e.target.value })}
-                    placeholder="เช่น สมชาย"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    นามสกุล <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={addAttendeeForm.lastName}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, lastName: e.target.value })}
-                    placeholder="เช่น ใจดี"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    value={addAttendeeForm.serviceArea}
+                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, serviceArea: e.target.value })}
+                    placeholder="เช่น ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู, จังหวัดเลย"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
 
-              {/* Organization & Status */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    สถาบัน / โรงเรียน / หน่วยงาน <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={addAttendeeForm.organization}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, organization: e.target.value })}
-                    placeholder="เช่น โรงเรียนเลยพิทยาคม"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
+              {/* Section 2: Participants & Activities */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-blue-500" />
+                  <span>2. ข้อมูลผู้เข้าร่วมและกิจกรรมที่สนใจ</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ประเภทนักเรียนที่เข้าร่วม <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={addAttendeeForm.studentType}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, studentType: e.target.value })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    >
+                      <option value="นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)">นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)</option>
+                      <option value="นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)">นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)</option>
+                      <option value="นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6)">นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6)</option>
+                      <option value="นักเรียนทุกระดับชั้นที่สนใจ">นักเรียนทุกระดับชั้นที่สนใจ</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      รายการกิจกรรมที่สนใจเข้าร่วม
+                    </label>
+                    <input
+                      type="text"
+                      value={addAttendeeForm.interestedActivities}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, interestedActivities: e.target.value })}
+                      placeholder="เช่น นิทรรศการ 8 สาขาวิชา, การประกวดโครงงาน"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    สถานภาพ <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={addAttendeeForm.status}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, status: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  >
-                    <option value="นักเรียน">นักเรียน</option>
-                    <option value="ครู-อาจารย์">ครู-อาจารย์</option>
-                    <option value="ผู้ปกครอง">ผู้ปกครอง</option>
-                    <option value="ประชาชนทั่วไป">ประชาชนทั่วไป</option>
-                    <option value="หน่วยงานภายนอก">หน่วยงานภายนอก</option>
-                  </select>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ผู้บริหาร (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={addAttendeeForm.executivesCount}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, executivesCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500 text-center font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      ครู/บุคลากร (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={addAttendeeForm.teachersCount}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, teachersCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500 text-center font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      นักเรียน (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={addAttendeeForm.studentsCount}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, studentsCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500 text-center font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-900">
+                  <span>ยอดผู้เข้าร่วมรวมทั้งหมด:</span>
+                  <span className="text-sm text-orange-600 font-extrabold">
+                    {(Number(addAttendeeForm.executivesCount) || 0) + (Number(addAttendeeForm.teachersCount) || 0) + (Number(addAttendeeForm.studentsCount) || 0)} คน
+                  </span>
                 </div>
               </div>
 
-              {/* Phone & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    เบอร์โทรศัพท์ (ใช้เป็นรหัสผ่านเข้าสู่ระบบ)
-                  </label>
-                  <input
-                    type="tel"
-                    value={addAttendeeForm.phone}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, phone: e.target.value })}
-                    placeholder="0812345678"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
+              {/* Section 3: Coordinator Contact */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>3. ข้อมูลครูผู้ประสานงานและช่องทางติดต่อ</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ชื่อ - นามสกุล ครูผู้ประสานงาน <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={addAttendeeForm.coordinatorName}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, coordinatorName: e.target.value })}
+                      placeholder="เช่น ครูพรทิพย์ สุวรรณรัตน์"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      เบอร์โทรศัพท์ (ครูผู้ประสานงาน) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      value={addAttendeeForm.coordinatorPhone}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, coordinatorPhone: e.target.value })}
+                      placeholder="เช่น 0812604295"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500 font-mono"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    อีเมล (ไม่ระบุจะสร้างให้อัตโนมัติ)
-                  </label>
-                  <input
-                    type="email"
-                    value={addAttendeeForm.email}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, email: e.target.value })}
-                    placeholder="user@example.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      อีเมลสำหรับติดต่อกลับ
+                    </label>
+                    <input
+                      type="email"
+                      value={addAttendeeForm.contactEmail}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, contactEmail: e.target.value })}
+                      placeholder="เช่น teacher@gmail.com"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ลิงก์แบบตอบรับเข้าร่วมงาน (Google Drive / ลิงก์ไฟล์)
+                    </label>
+                    <input
+                      type="url"
+                      value={addAttendeeForm.acceptanceFormUrl}
+                      onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, acceptanceFormUrl: e.target.value })}
+                      placeholder="https://drive.google.com/file/..."
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Province, District & Attendee Count */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    จังหวัด
-                  </label>
-                  <input
-                    type="text"
-                    value={addAttendeeForm.province}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, province: e.target.value })}
-                    placeholder="เลย"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    อำเภอ
-                  </label>
-                  <input
-                    type="text"
-                    value={addAttendeeForm.district}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, district: e.target.value })}
-                    placeholder="เมืองเลย"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    จำนวนผู้ร่วม (คน)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={addAttendeeForm.attendeeCount}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, attendeeCount: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-              </div>
-
-              {/* Transport & Password */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    วิธีการเดินทาง
-                  </label>
-                  <select
-                    value={addAttendeeForm.transportMethod}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, transportMethod: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  >
-                    <option value="รถส่วนตัว">รถส่วนตัว</option>
-                    <option value="รถตู้/รถบัสโรงเรียน">รถตู้/รถบัสโรงเรียน</option>
-                    <option value="รถโดยสารประจำทาง">รถโดยสารประจำทาง</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    กำหนดรหัสผ่านเข้าสู่ระบบ (ถ้าไม่ใส่จะใช้เบอร์โทรหรือ 123456)
-                  </label>
-                  <input
-                    type="text"
-                    value={addAttendeeForm.password}
-                    onChange={(e) => setAddAttendeeForm({ ...addAttendeeForm, password: e.target.value })}
-                    placeholder="กำหนดรหัสผ่าน"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-slate-900 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
+              {/* Automatic Consecutive Code Info */}
+              <div className="p-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl flex items-center justify-between text-xs">
+                <span className="text-slate-600">รหัสประจำตัวที่จะสร้างให้อัตโนมัติ:</span>
+                <span className="font-mono font-bold text-orange-600 text-sm bg-white px-2.5 py-0.5 rounded-lg border border-orange-300 shadow-2xs">
+                  {getNextConsecutiveParticipantCode(attendees)}
+                </span>
               </div>
 
               {/* Submit Buttons */}
@@ -3243,7 +3584,305 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>บันทึกข้อมูลผู้ลงทะเบียน</span>
+                      <span>บันทึกข้อมูลสถานศึกษา</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Attendee Detail Modal */}
+      {viewingAttendeeDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-xl bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-scale-up">
+            <div className="shrink-0 bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-950 p-5 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-mono font-bold text-amber-300">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-amber-300 text-sm bg-white/10 px-2 py-0.5 rounded-md">
+                      {viewingAttendeeDetail.participantCode}
+                    </span>
+                    <span className="text-xs bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md font-bold">
+                      {viewingAttendeeDetail.checkedIn ? 'เช็คอินแล้ว ✅' : 'ยังไม่เช็คอิน ⏳'}
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg leading-tight mt-1">
+                    {viewingAttendeeDetail.schoolName || viewingAttendeeDetail.organization}
+                  </h3>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingAttendeeDetail(null)}
+                className="p-2 text-slate-300 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                <div>
+                  <span className="text-[11px] text-slate-500 font-semibold block">ประเภทของโรงเรียน</span>
+                  <span className="font-bold text-slate-900">{viewingAttendeeDetail.schoolType || viewingAttendeeDetail.status || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-500 font-semibold block">โรงเรียนตั้งอยู่เขตพื้นที่บริการ</span>
+                  <span className="font-bold text-slate-900">{viewingAttendeeDetail.serviceArea || `${viewingAttendeeDetail.district} ${viewingAttendeeDetail.province}`}</span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-500 font-semibold block">ประเภทนักเรียนที่เข้าร่วม</span>
+                  <span className="font-bold text-slate-900">{viewingAttendeeDetail.studentType || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-500 font-semibold block">ยอดผู้เข้าร่วมรวม</span>
+                  <span className="font-extrabold text-orange-600">{viewingAttendeeDetail.attendeeCount || 1} คน</span>
+                </div>
+              </div>
+
+              {/* Breakdown */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl">
+                  <span className="text-[10px] text-blue-600 font-bold block">ผู้บริหารสถานศึกษา</span>
+                  <span className="text-base font-extrabold text-blue-900">{viewingAttendeeDetail.executivesCount ?? '-'} คน</span>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl">
+                  <span className="text-[10px] text-emerald-600 font-bold block">ครู/บุคลากร</span>
+                  <span className="text-base font-extrabold text-emerald-900">{viewingAttendeeDetail.teachersCount ?? '-'} คน</span>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 p-3 rounded-xl">
+                  <span className="text-[10px] text-purple-600 font-bold block">นักเรียน</span>
+                  <span className="text-base font-extrabold text-purple-900">{viewingAttendeeDetail.studentsCount ?? '-'} คน</span>
+                </div>
+              </div>
+
+              {/* Activities */}
+              {viewingAttendeeDetail.interestedActivities && (
+                <div className="bg-amber-50/80 border border-amber-200/80 p-3.5 rounded-2xl">
+                  <span className="text-[11px] text-amber-700 font-bold block mb-1">รายการกิจกรรมที่สนใจเข้าร่วม</span>
+                  <p className="text-slate-800 font-medium leading-relaxed">{viewingAttendeeDetail.interestedActivities}</p>
+                </div>
+              )}
+
+              {/* Coordinator */}
+              <div className="bg-slate-50 border border-slate-200/80 p-4 rounded-2xl space-y-2">
+                <span className="text-[11px] text-slate-500 font-bold block">ข้อมูลครูผู้ประสานงาน</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-500">ชื่อ - นามสกุล:</span>{' '}
+                    <strong className="text-slate-900">{viewingAttendeeDetail.coordinatorName || `${viewingAttendeeDetail.firstName} ${viewingAttendeeDetail.lastName}`}</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-500">เบอร์โทรศัพท์:</span>{' '}
+                    <strong className="text-slate-900 font-mono">{viewingAttendeeDetail.coordinatorPhone || viewingAttendeeDetail.phone}</strong>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-slate-500">อีเมลติดต่อกลับ:</span>{' '}
+                    <strong className="text-slate-900">{viewingAttendeeDetail.contactEmail || viewingAttendeeDetail.email}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Acceptance Link */}
+              {viewingAttendeeDetail.acceptanceFormUrl && (
+                <div className="flex items-center justify-between p-3.5 bg-blue-50 border border-blue-200 rounded-2xl">
+                  <div className="flex items-center gap-2 text-blue-900 text-xs">
+                    <LinkIcon className="w-4 h-4 text-blue-600" />
+                    <span>มีลิงก์แบบตอบรับเข้าร่วมงาน</span>
+                  </div>
+                  <a
+                    href={viewingAttendeeDetail.acceptanceFormUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+                  >
+                    เปิดดูไฟล์
+                  </a>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-between text-xs text-slate-500 border-t border-slate-200">
+                <span>ลงทะเบียนเมื่อ: {viewingAttendeeDetail.registeredAt}</span>
+                <button
+                  type="button"
+                  onClick={() => setViewingAttendeeDetail(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Check-In Actual Attendance Breakdown Modal */}
+      {checkingInAttendee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white border border-slate-200 rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col animate-scale-up">
+            {/* Header */}
+            <div className="shrink-0 bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-5 text-white flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white shadow-inner">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-amber-200 text-xs bg-black/20 px-2 py-0.5 rounded-md border border-white/20">
+                      {checkingInAttendee.participantCode}
+                    </span>
+                    <span className="text-[11px] bg-white/20 text-white px-2 py-0.5 rounded-md font-semibold">
+                      บันทึกยอดเช็คอินหน้างาน
+                    </span>
+                  </div>
+                  <h3 className="font-extrabold text-base sm:text-lg leading-tight mt-1 text-white">
+                    {checkingInAttendee.schoolName || checkingInAttendee.organization}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCheckingInAttendee(null)}
+                className="p-2 text-white/80 hover:text-white rounded-full bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleConfirmActualAttendance} className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+              {/* Reference registered info */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-semibold">ครูผู้ประสานงาน:</span>
+                  <span className="font-bold text-slate-800">
+                    {checkingInAttendee.coordinatorName || `${checkingInAttendee.firstName} ${checkingInAttendee.lastName}`} (📞 {checkingInAttendee.coordinatorPhone || checkingInAttendee.phone})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200">
+                  <span className="text-slate-500 font-semibold">ยอดแจ้งล่วงหน้า (ในระบบ):</span>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200">
+                      ผบ. {checkingInAttendee.executivesCount || 0}
+                    </span>
+                    <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200">
+                      ครู {checkingInAttendee.teachersCount || 0}
+                    </span>
+                    <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200">
+                      นร. {checkingInAttendee.studentsCount || 0}
+                    </span>
+                    <span className="bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md">
+                      รวม {checkingInAttendee.attendeeCount || 1} คน
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actual Attendance Input Fields */}
+              <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 space-y-3">
+                <h4 className="font-bold text-amber-950 text-xs sm:text-sm flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-orange-600" />
+                  <span>ระบุจำนวนผู้เข้าร่วมที่เดินทางมาร่วมงานจริง (Actual)</span>
+                </h4>
+
+                <div className="grid grid-cols-3 gap-3">
+                  {/* Executives */}
+                  <div className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-xs">
+                    <label className="block text-[11px] font-bold text-blue-900 mb-1.5 text-center">
+                      👔 ผู้บริหาร (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={actualExecCount}
+                      onChange={(e) => setActualExecCount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-2 text-slate-900 text-base font-extrabold text-center focus:outline-none focus:border-orange-500 focus:bg-white"
+                    />
+                  </div>
+
+                  {/* Teachers */}
+                  <div className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-xs">
+                    <label className="block text-[11px] font-bold text-emerald-900 mb-1.5 text-center">
+                      🧑‍🏫 ครู/บุคลากร (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={actualTeachersCount}
+                      onChange={(e) => setActualTeachersCount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-2 text-slate-900 text-base font-extrabold text-center focus:outline-none focus:border-orange-500 focus:bg-white"
+                    />
+                  </div>
+
+                  {/* Students */}
+                  <div className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-xs">
+                    <label className="block text-[11px] font-bold text-purple-900 mb-1.5 text-center">
+                      🎒 นักเรียน (คน)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={actualStudentsCount}
+                      onChange={(e) => setActualStudentsCount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-2 text-slate-900 text-base font-extrabold text-center focus:outline-none focus:border-orange-500 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Total Actual Sum Box */}
+                <div className="flex items-center justify-between bg-gradient-to-r from-orange-500 to-amber-500 text-white px-4 py-3 rounded-xl shadow-sm">
+                  <span className="font-bold text-xs sm:text-sm">ยอดรวมผู้มาร่วมงานจริงหน้างาน:</span>
+                  <span className="text-xl font-extrabold font-mono">
+                    {(Number(actualExecCount) || 0) + (Number(actualTeachersCount) || 0) + (Number(actualStudentsCount) || 0)} คน
+                  </span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  หมายเหตุเพิ่มเติม / ข้อสังเกตหน้างาน (ถ้ามี)
+                </label>
+                <input
+                  type="text"
+                  value={actualCheckinNotes}
+                  onChange={(e) => setActualCheckinNotes(e.target.value)}
+                  placeholder="เช่น มาร่วมเฉพาะช่วงเช้า, เปลี่ยนแปลงครูผู้ประสานงาน"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-900 text-xs focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCheckingInAttendee(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingCheckIn}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-emerald-500/20 transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {isSavingCheckIn ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>ยืนยันบันทึกเช็คอินหน้างาน</span>
                     </>
                   )}
                 </button>

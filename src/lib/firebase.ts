@@ -24,6 +24,48 @@ const MAP_BUILDINGS_COLLECTION = 'map_buildings';
 const SCHEDULES_COLLECTION = 'schedules';
 
 // --- ATTENDEES ---
+
+/**
+ * Calculates next sequential participant code in format "PCSHS-0001", "PCSHS-0002", etc.
+ */
+export const getNextConsecutiveParticipantCode = (attendeesList: Attendee[]): string => {
+  let maxSeq = 0;
+  for (const a of attendeesList) {
+    if (!a.participantCode) continue;
+    // Extract number from PCSHS-0001, PCSHS2026-0001, PCSHS0001, etc.
+    const match = a.participantCode.match(/PCSHS(?:2026)?[-_]?(\d+)/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxSeq && num < 100000) {
+        maxSeq = num;
+      }
+    }
+  }
+  const nextNum = maxSeq > 0 ? maxSeq + 1 : attendeesList.length + 1;
+  return `PCSHS-${String(nextNum).padStart(4, '0')}`;
+};
+
+/**
+ * Normalize and ensure all attendees have sequential codes: PCSHS-0001, PCSHS-0002, ...
+ */
+export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] => {
+  // Sort stably by registeredAt or original order
+  const sorted = [...attendeesList].sort((a, b) => {
+    const timeA = a.registeredAt || '';
+    const timeB = b.registeredAt || '';
+    return timeA.localeCompare(timeB);
+  });
+
+  return sorted.map((att, index) => {
+    const seqCode = `PCSHS-${String(index + 1).padStart(4, '0')}`;
+    return {
+      ...att,
+      participantCode: seqCode,
+      qrCodeData: seqCode,
+    };
+  });
+};
+
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(q, (snapshot) => {
@@ -31,8 +73,24 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
     snapshot.forEach((docSnap) => {
       list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
     });
-    list.sort((a, b) => (b.registeredAt || '').localeCompare(a.registeredAt || ''));
-    callback(list);
+    
+    // Check if any attendee has old random/unsequenced format (e.g. PCSHS2026- or unsorted)
+    const needsResequencing = list.some((a) => !a.participantCode || a.participantCode.includes('PCSHS2026-') || !a.participantCode.match(/^PCSHS-\d{4}$/));
+    
+    if (needsResequencing && list.length > 0) {
+      const resequenced = resequenceAllAttendees(list);
+      // Asynchronously update in Firestore
+      saveAllAttendeesToFirestore(resequenced).catch(console.error);
+      callback(resequenced);
+    } else {
+      // Sort in display order
+      list.sort((a, b) => {
+        const numA = parseInt((a.participantCode.match(/\d+/) || ['0'])[0], 10);
+        const numB = parseInt((b.participantCode.match(/\d+/) || ['0'])[0], 10);
+        return numA - numB;
+      });
+      callback(list);
+    }
   }, (err) => {
     console.error("Firestore attendees subscription error:", err);
   });

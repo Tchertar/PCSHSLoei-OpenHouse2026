@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScheduleItem } from '../types';
-import { Calendar, Clock, MapPin, Sparkles, FileText, Download } from 'lucide-react';
+import { Calendar, Clock, MapPin, FileText, Download } from 'lucide-react';
 
 interface ScheduleSectionProps {
   schedule: ScheduleItem[];

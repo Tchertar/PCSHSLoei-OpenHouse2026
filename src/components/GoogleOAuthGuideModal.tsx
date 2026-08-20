@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ExternalLink, Key, Check, Copy, Shield, X, HelpCircle, Code } from 'lucide-react';
+import { ExternalLink, Key, Check, Copy, X } from 'lucide-react';
 
 interface GoogleOAuthGuideModalProps {
   isOpen: boolean;

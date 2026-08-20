@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ActivityItem, Attendee } from '../types';
-import { ExternalLink, Filter, MapPin, Phone, Search, Trophy, Users, Clock, BookOpen, Layers, Lock } from 'lucide-react';
+import { ExternalLink, Filter, MapPin, Phone, Search, Trophy, Users, Clock, BookOpen, Lock } from 'lucide-react';
 
 interface ActivitiesSectionProps {
   activities: ActivityItem[];

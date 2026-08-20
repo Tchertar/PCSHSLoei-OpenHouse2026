@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Attendee, AttendeeStatus, TransportMethod } from '../types';
 import {
+  Building,
   Eye,
   EyeOff,
   Loader2,
+  Phone,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   UserCheck,
+  Users,
   X,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { saveAttendeeToFirestore } from '../lib/firebase';
+import { saveAttendeeToFirestore, getNextConsecutiveParticipantCode } from '../lib/firebase';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -20,32 +23,28 @@ interface RegistrationModalProps {
   onRegisterSuccess: (newAttendee: Attendee, isExisting?: boolean) => void;
 }
 
-const THAI_PROVINCES = [
-  'เลย', 'อุดรธานี', 'ขอนแก่น', 'หนองบัวลำภู', 'หนองคาย', 'บึงกาฬ', 'สกลนคร', 'นครพนม',
-  'มุกดาหาร', 'มหาสารคาม', 'ร้อยเอ็ด', 'กาฬสินธุ์', 'ชัยภูมิ', 'นครราชสีมา', 'บุรีรัมย์',
-  'สุรินทร์', 'ศรีสะเกษ', 'อุบลราชธานี', 'ยโสธร', 'อำนาจเจริญ', 'กรุงเทพมหานคร', 'เชียงใหม่', 'เชียงราย', 'พิษณุโลก', 'เพชรบูรณ์'
-];
-
 export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   isOpen,
   onClose,
   existingAttendees = [],
   onRegisterSuccess,
 }) => {
-  // Form State
+  // Form State with 12 School Registration Fields
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
+    schoolType: 'โรงเรียนขยายโอกาสทางการศึกษา',
+    schoolName: '',
+    serviceArea: '',
+    studentType: 'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+    interestedActivities: '',
+    executivesCount: 0,
+    teachersCount: 1,
+    studentsCount: 5,
+    coordinatorName: '',
+    coordinatorPhone: '',
+    contactEmail: '',
+    acceptanceFormUrl: '',
     password: '',
     confirmPassword: '',
-    phone: '',
-    status: 'นักเรียน' as AttendeeStatus,
-    organization: '',
-    district: 'เมืองเลย',
-    province: 'เลย',
-    attendeeCount: 1,
-    transportMethod: 'รถส่วนตัว' as TransportMethod,
   });
 
   // Password Visibility Toggles
@@ -136,39 +135,56 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Total attendees calculation
+  const totalCount =
+    (Number(formData.executivesCount) || 0) +
+    (Number(formData.teachersCount) || 0) +
+    (Number(formData.studentsCount) || 0);
+
   // Handle Registration Form Submission with CAPTCHA
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     // Field Validations
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
-      setFormError('กรุณากรอกชื่อและนามสกุล');
+    if (!formData.schoolName.trim()) {
+      setFormError('กรุณากรอกชื่อสถานศึกษา (โรงเรียน)');
       return;
     }
 
-    if (!formData.email.trim() || !formData.email.includes('@') || !formData.email.includes('.')) {
-      setFormError('กรุณากรอกรูปแบบอีเมลให้ถูกต้อง (เช่น user@gmail.com)');
+    if (!formData.serviceArea.trim()) {
+      setFormError('กรุณาระบุเขตพื้นที่บริการที่โรงเรียนตั้งอยู่');
       return;
     }
 
-    if (!formData.password) {
-      setFormError('กรุณาสร้างรหัสผ่าน');
+    if (!formData.coordinatorName.trim()) {
+      setFormError('กรุณากรอกชื่อ - นามสกุล ครูผู้ประสานงาน');
       return;
     }
 
-    if (formData.password.length < 6) {
+    if (!formData.coordinatorPhone.trim()) {
+      setFormError('กรุณากรอกเบอร์โทรศัพท์ครูผู้ประสานงาน');
+      return;
+    }
+
+    const emailToUse =
+      formData.contactEmail.trim() ||
+      `school_${formData.coordinatorPhone.trim().replace(/\D/g, '') || Date.now()}@pcshsloei.ac.th`;
+
+    if (formData.contactEmail.trim() && (!formData.contactEmail.includes('@') || !formData.contactEmail.includes('.'))) {
+      setFormError('กรุณากรอกรูปแบบอีเมลติดต่อกลับให้ถูกต้อง (เช่น teacher@gmail.com)');
+      return;
+    }
+
+    // Password validation (default to phone or 123456 if empty)
+    const effectivePassword = formData.password.trim() || formData.coordinatorPhone.trim() || '123456';
+    if (formData.password && formData.password.length < 6) {
       setFormError('รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร');
       return;
     }
 
-    if (formData.password !== formData.confirmPassword) {
+    if (formData.password && formData.password !== formData.confirmPassword) {
       setFormError('รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน กรุณาตรวจสอบอีกครั้ง');
-      return;
-    }
-
-    if (!formData.phone.trim() || !formData.organization.trim()) {
-      setFormError('กรุณากรอกเบอร์โทรศัพท์และชื่อสถาบัน/หน่วยงานให้ครบถ้วน');
       return;
     }
 
@@ -184,13 +200,21 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       return;
     }
 
-    // Check duplicate registration
-    const normalizedEmail = formData.email.trim().toLowerCase();
-    const existing = existingAttendees.find((a) => a.email.toLowerCase() === normalizedEmail);
+    // Split coordinator name for firstName/lastName
+    const nameParts = formData.coordinatorName.trim().split(/\s+/);
+    const firstName = nameParts[0] || 'ครูผู้ประสานงาน';
+    const lastName = nameParts.slice(1).join(' ') || formData.schoolName.trim();
+
+    // Check duplicate registration by school name & phone
+    const existing = existingAttendees.find(
+      (a) =>
+        (a.schoolName && a.schoolName.trim().toLowerCase() === formData.schoolName.trim().toLowerCase()) ||
+        (a.coordinatorPhone && a.coordinatorPhone.trim() === formData.coordinatorPhone.trim())
+    );
 
     if (existing) {
       alert(
-        `👋 อีเมล ${normalizedEmail} เคยลงทะเบียนไว้ในระบบแล้ว!\n\nท่านสามารถเข้าสู่ระบบด้วยอีเมลและรหัสผ่านเพื่อดูบัตรประจำตัวได้ทันที`
+        `👋 โรงเรียน/สถานศึกษา "${formData.schoolName}" หรือเบอร์ ${formData.coordinatorPhone} เคยลงทะเบียนไว้ในระบบแล้ว!\n\nรหัสประจำตัว: ${existing.participantCode}\nท่านสามารถเข้าสู่ระบบเพื่อดูบัตรประจำตัวและ QR Code ได้ทันที`
       );
       onRegisterSuccess(existing, true);
       onClose();
@@ -200,29 +224,43 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
     setLoading(true);
 
     try {
-      // Generate Participant Code
-      const codeNum = Math.floor(1000 + Math.random() * 9000);
-      const participantCode = `PCSHS2026-${codeNum}`;
+      // Generate Consecutive Participant Code (e.g. PCSHS-0001, PCSHS-0002, ...)
+      const participantCode = getNextConsecutiveParticipantCode(existingAttendees);
 
       const newAttendee: Attendee = {
-        id: `att_${Date.now()}`,
+        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         participantCode,
-        email: normalizedEmail,
-        password: formData.password,
+        email: emailToUse.toLowerCase(),
+        password: effectivePassword,
         isVerified: true,
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        phone: formData.phone.trim(),
-        status: formData.status,
-        organization: formData.organization.trim(),
-        district: formData.district.trim() || 'เมืองเลย',
-        province: formData.province,
-        attendeeCount: Number(formData.attendeeCount) || 1,
-        transportMethod: formData.transportMethod,
+        firstName,
+        lastName,
+        phone: formData.coordinatorPhone.trim(),
+        status: 'ครู-อาจารย์' as AttendeeStatus,
+        organization: formData.schoolName.trim(),
+        district: formData.serviceArea.trim(),
+        province: 'เลย',
+        attendeeCount: Math.max(1, totalCount),
+        transportMethod: 'รถตู้/รถบัสโรงเรียน' as TransportMethod,
         registeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
         checkedIn: false,
         qrCodeData: participantCode,
-        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.firstName)}+${encodeURIComponent(formData.lastName)}&background=0D8ABC&color=fff&bold=true`,
+        photoUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(formData.schoolName)}&background=F97316&color=fff&bold=true`,
+        // 12 School Specific Fields
+        schoolType: formData.schoolType,
+        schoolName: formData.schoolName.trim(),
+        serviceArea: formData.serviceArea.trim(),
+        studentType: formData.studentType,
+        interestedActivities: formData.interestedActivities.trim(),
+        executivesCount: Number(formData.executivesCount) || 0,
+        teachersCount: Number(formData.teachersCount) || 0,
+        studentsCount: Number(formData.studentsCount) || 0,
+        coordinatorName: formData.coordinatorName.trim(),
+        coordinatorPhone: formData.coordinatorPhone.trim(),
+        contactEmail: formData.contactEmail.trim(),
+        acceptanceFormUrl: formData.acceptanceFormUrl.trim(),
+        registrationSource: 'web_registration',
+        isWebIndividual: true,
       };
 
       // Save to Firebase Firestore
@@ -236,7 +274,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
       });
 
       alert(
-        `🎉 ลงทะเบียนเข้าร่วมงานสำเร็จ!\n\nข้อมูลผู้เข้าร่วมงาน ${newAttendee.firstName} ${newAttendee.lastName} บันทึกลงในระบบเรียบร้อยแล้ว`
+        `🎉 ลงทะเบียนสถานศึกษาสำเร็จ!\n\nสถานศึกษา: ${newAttendee.schoolName}\nรหัสประจำตัว: ${newAttendee.participantCode}\nครูผู้ประสานงาน: ${newAttendee.coordinatorName}`
       );
 
       setLoading(false);
@@ -252,25 +290,24 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-2xl my-auto sm:my-8 bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden text-slate-900 flex flex-col max-h-[94vh] sm:max-h-[90vh]">
-        
         {/* Header */}
-        <div className="shrink-0 relative bg-slate-900 p-4 sm:p-6 border-b border-slate-800 text-white">
+        <div className="shrink-0 relative bg-gradient-to-r from-orange-600 via-amber-600 to-orange-700 p-4 sm:p-6 text-white">
           <button
             onClick={onClose}
-            className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+            className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 text-amber-100 hover:text-white rounded-full bg-black/15 hover:bg-black/30 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3 pr-8 sm:pr-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400 shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/20 flex items-center justify-center text-amber-200 shrink-0">
               <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div>
               <h3 className="text-base sm:text-2xl font-bold text-white leading-tight">
-                ลงทะเบียนสำหรับบุคคลทั่วไป
+                แบบฟอร์มลงทะเบียนเข้าร่วมงาน (สถานศึกษา/โรงเรียน)
               </h3>
-              <p className="text-[11px] sm:text-sm text-blue-300 mt-0.5">
-                โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (28 สิงหาคม 2569)
+              <p className="text-[11px] sm:text-xs text-amber-100 mt-0.5">
+                โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย • วันศุกร์ที่ 28 สิงหาคม 2569
               </p>
             </div>
           </div>
@@ -278,191 +315,270 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1">
-          {/* Important Registration Notice */}
+          {/* Notice */}
           <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs sm:text-sm font-semibold flex items-center gap-2">
             <span className="text-amber-600 shrink-0">⚠️</span>
             <span>หากลงทะเบียนใน QR Code ที่ได้รับในหนังสือเชิญแล้ว ไม่ต้องลงทะเบียนซ้ำ</span>
           </div>
 
-          <form onSubmit={handleFormSubmit} className="space-y-3.5 sm:space-y-4 text-left">
+          <form onSubmit={handleFormSubmit} className="space-y-4 text-left">
             {formError && (
               <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm font-semibold rounded-xl text-center">
                 {formError}
               </div>
             )}
 
-            {/* Personal Name */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ชื่อจริง <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  placeholder="เช่น สมชาย"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                />
-              </div>
+            {/* Section 1: School Info */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Building className="w-4 h-4 text-orange-500" />
+                <span>1. ข้อมูลสถานศึกษา (โรงเรียน)</span>
+              </h4>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  นามสกุล <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  placeholder="เช่น ใจดี"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                />
-              </div>
-            </div>
-
-            {/* Email Input */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1 flex flex-wrap items-center justify-between gap-1">
-                <span>อีเมลประจำตัว (Email Address) <span className="text-red-500">*</span></span>
-                <span className="text-[11px] text-slate-500 font-normal">จะใช้สำหรับเข้าสู่ระบบดูบัตรประจำตัว</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="เช่น example@gmail.com"
-                className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-              />
-            </div>
-
-            {/* Password & Confirm Password */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  สร้างรหัสผ่าน (Password) <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    placeholder="กำหนดรหัสผ่าน (6 ตัวขึ้นไป)"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ประเภทของโรงเรียน <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.schoolType}
+                    onChange={(e) => setFormData({ ...formData, schoolType: e.target.value })}
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+                    <option value="โรงเรียนขยายโอกาสทางการศึกษา">โรงเรียนขยายโอกาสทางการศึกษา</option>
+                    <option value="โรงเรียนมัธยมศึกษา (สพม.)">โรงเรียนมัธยมศึกษา (สพม.)</option>
+                    <option value="โรงเรียนประถมศึกษา (สพป.)">โรงเรียนประถมศึกษา (สพป.)</option>
+                    <option value="โรงเรียนเอกชน">โรงเรียนเอกชน</option>
+                    <option value="โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ">โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชื่อสถานศึกษา (โรงเรียน) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.schoolName}
+                    onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
+                    placeholder="เช่น โรงเรียนเลยพิทยาคม"
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ยืนยันรหัสผ่าน (Confirm Password) <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    required
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    placeholder="ยืนยันรหัสผ่านอีกครั้ง"
-                    className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl pl-3.5 pr-10 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm font-medium"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Phone & Status */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  เบอร์โทรศัพท์ติดต่อ <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="เช่น 0812345678"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">สถานภาพผู้ลงทะเบียน</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as AttendeeStatus })}
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                >
-                  <option value="นักเรียน">นักเรียน</option>
-                  <option value="ครู/อาจารย์">ครู / อาจารย์</option>
-                  <option value="ผู้ปกครอง">ผู้ปกครอง</option>
-                  <option value="ศิษย์เก่า">ศิษย์เก่า</option>
-                  <option value="ประชาชนทั่วไป">ประชาชนทั่วไป</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Organization */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                ชื่อโรงเรียน / สถาบัน / หน่วยงาน <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.organization}
-                onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                placeholder="เช่น โรงเรียนเลยพิทยาคม หรือ บุคคลทั่วไป"
-                className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-              />
-            </div>
-
-            {/* District & Province */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  ชื่ออำเภอ <span className="text-red-500">*</span>
+                  โรงเรียนตั้งอยู่เขตพื้นที่บริการ <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  value={formData.district}
-                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
-                  placeholder="เช่น เมืองเลย, เชียงคาน"
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
+                  value={formData.serviceArea}
+                  onChange={(e) => setFormData({ ...formData, serviceArea: e.target.value })}
+                  placeholder="เช่น ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู, อำเภอเมืองเลย จังหวัดเลย"
+                  className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
                 />
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">จังหวัด</label>
-                <select
-                  value={formData.province}
-                  onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 focus:border-orange-500 rounded-xl px-3.5 py-2.5 text-slate-900 text-base sm:text-sm focus:outline-none shadow-sm"
-                >
-                  {THAI_PROVINCES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+            {/* Section 2: Participants & Activities */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-blue-500" />
+                <span>2. ข้อมูลผู้เข้าร่วมและกิจกรรมที่สนใจ</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ประเภทนักเรียนที่เข้าร่วม <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={formData.studentType}
+                    onChange={(e) => setFormData({ ...formData, studentType: e.target.value })}
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  >
+                    <option value="นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)">นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)</option>
+                    <option value="นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)">นักเรียนมัธยมศึกษาตอนปลาย (ม.4 - ม.6)</option>
+                    <option value="นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6)">นักเรียนประถมศึกษาตอนปลาย (ป.4 - ป.6)</option>
+                    <option value="นักเรียนทุกระดับชั้นที่สนใจ">นักเรียนทุกระดับชั้นที่สนใจ</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    รายการกิจกรรมที่สนใจเข้าร่วม
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.interestedActivities}
+                    onChange={(e) => setFormData({ ...formData, interestedActivities: e.target.value })}
+                    placeholder="เช่น นิทรรศการ 8 สาขาวิชา, การประกวดโครงงาน"
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    ผู้บริหารสถานศึกษา (คน)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.executivesCount}
+                    onChange={(e) => setFormData({ ...formData, executivesCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs text-center font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    ครู/บุคลากร (คน)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.teachersCount}
+                    onChange={(e) => setFormData({ ...formData, teachersCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs text-center font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    นักเรียน (คน)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.studentsCount}
+                    onChange={(e) => setFormData({ ...formData, studentsCount: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs text-center font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl text-xs font-bold text-amber-900">
+                <span>ยอดผู้เข้าร่วมรวมทั้งหมด:</span>
+                <span className="text-sm text-orange-600 font-extrabold">{totalCount} คน</span>
+              </div>
+            </div>
+
+            {/* Section 3: Coordinator Contact */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <Phone className="w-4 h-4 text-emerald-500" />
+                <span>3. ข้อมูลครูผู้ประสานงานและช่องทางติดต่อ</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ชื่อ - นามสกุล ครูผู้ประสานงาน <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.coordinatorName}
+                    onChange={(e) => setFormData({ ...formData, coordinatorName: e.target.value })}
+                    placeholder="เช่น ครูสมชาย มั่งคั่ง"
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    เบอร์โทรศัพท์ (ครูผู้ประสานงาน) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    value={formData.coordinatorPhone}
+                    onChange={(e) => setFormData({ ...formData, coordinatorPhone: e.target.value })}
+                    placeholder="เช่น 0812345678"
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    อีเมลสำหรับติดต่อกลับ
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.contactEmail}
+                    onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                    placeholder="เช่น teacher@gmail.com"
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    ลิงก์แบบตอบรับเข้าร่วมงาน (Google Drive / ลิงก์ไฟล์)
+                  </label>
+                  <input
+                    type="url"
+                    value={formData.acceptanceFormUrl}
+                    onChange={(e) => setFormData({ ...formData, acceptanceFormUrl: e.target.value })}
+                    placeholder="https://drive.google.com/file/..."
+                    className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl px-3 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Optional Password Creation */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center justify-between">
+                <span>4. กำหนดรหัสผ่านสำหรับเข้าสู่ระบบ (อุปกรณ์อื่น/ดูบัตร)</span>
+                <span className="text-[10px] text-slate-400 font-normal">หากไม่ระบุ จะใช้เบอร์โทรศัพท์เป็นรหัสผ่าน</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">กำหนดรหัสผ่าน (ถ้ามี)</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      placeholder="เช่น 123456"
+                      className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl pl-3 pr-9 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">ยืนยันรหัสผ่าน</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                      placeholder="ยืนยันรหัสผ่านอีกครั้ง"
+                      className="w-full bg-white border border-slate-300 focus:border-orange-500 rounded-xl pl-3 pr-9 py-2 text-slate-900 text-sm focus:outline-none shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -532,7 +648,7 @@ export const RegistrationModal: React.FC<RegistrationModalProps> = ({
                 ) : (
                   <>
                     <UserCheck className="w-4 h-4" />
-                    <span>ยืนยันและลงทะเบียน</span>
+                    <span>ยืนยันและลงทะเบียนสถานศึกษา</span>
                   </>
                 )}
               </button>

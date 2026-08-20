@@ -1,5 +1,3 @@
-import { Attendee } from '../types';
-
 export interface GoogleUserProfile {
   googleId: string;
   email: string;

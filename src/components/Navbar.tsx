@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, Building2, MapPin } from 'lucide-react';
+import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, MapPin } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;

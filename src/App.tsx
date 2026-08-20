@@ -30,7 +30,6 @@ import {
   subscribeAttendees,
   saveAttendeeToFirestore,
   subscribeAdmins,
-  saveAdminToFirestore,
   saveAllAdminsToFirestore,
   subscribeActivities,
   subscribeAuditLogs,
@@ -39,7 +38,6 @@ import {
 } from './lib/firebase';
 
 import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
-import { Sparkles, ArrowRight, UserCheck, CheckCircle2, Shield, Building2, Lock, LogIn } from 'lucide-react';
 
 const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
   {
@@ -167,12 +165,6 @@ export default function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
 
-  const isRegistrationOpen = false;
-
-  const handleGeneralRegisterClick = () => {
-    alert('ระบบปิดรับการลงทะเบียนออนไลน์เรียบร้อยแล้ว\n\nหากท่านได้ลงทะเบียนไว้แล้ว สามารถกดปุ่ม "เข้าสู่ระบบ" เพื่อดูบัตรประจำตัวผู้เข้าร่วมงานได้');
-  };
-
   const handleOpenUserLogin = () => {
     setLoginInitialTab('user');
     setIsLoginOpen(true);
@@ -186,7 +178,6 @@ export default function App() {
   // Google OAuth States
   const [isAccountChooserOpen, setIsAccountChooserOpen] = useState(false);
   const [isOAuthGuideOpen, setIsOAuthGuideOpen] = useState(false);
-  const [selectedGoogleUser, setSelectedGoogleUser] = useState<GoogleUserProfile | null>(null);
 
   // Sync states to LocalStorage
   useEffect(() => {
@@ -291,8 +282,7 @@ export default function App() {
       alert(`👋 ยินดีต้อนรับกลับคุณ ${updatedUser.firstName} ${updatedUser.lastName}!\n\nเข้าสู่ระบบสำเร็จด้วย Google Account (${googleUser.email})`);
       setIsProfileOpen(true);
     } else {
-      // New user -> Open registration modal populated with Google Info
-      setSelectedGoogleUser(googleUser);
+      // New user -> Open registration modal
       setIsRegisterOpen(true);
     }
   };

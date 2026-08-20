@@ -6,14 +6,11 @@ import {
   ScanLine,
   CheckCircle2,
   BookOpen,
-  Award,
   Gift,
   AlertCircle,
   UserCheck,
   ArrowRight,
-  Sparkles,
   Calendar,
-  Layers,
   Stamp,
 } from 'lucide-react';
 

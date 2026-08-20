@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GoogleUserProfile, verifyGoogleTokenWithBackend } from '../lib/googleAuth';
-import { Check, Info, Loader2, LogIn, Shield, Sparkles, User, UserPlus, X } from 'lucide-react';
+import { Info, Loader2, LogIn, User, UserPlus, X } from 'lucide-react';
 
 interface GoogleAccountChooserModalProps {
   isOpen: boolean;

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Attendee } from '../types';
-import { Calendar, Download, MapPin, Phone, Printer, QrCode, School, User, Users, X, CheckCircle2 } from 'lucide-react';
+import { Download, MapPin, Phone, Printer, QrCode, School, User, Users, X, CheckCircle2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -164,33 +164,38 @@ export const ProfileTicketModal: React.FC<ProfileTicketModalProps> = ({
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-blue-600 shrink-0" />
                   <span className="font-bold text-slate-900 text-base">
-                    คุณ{attendee.firstName} {attendee.lastName}
+                    {attendee.coordinatorName ? `ครูผู้ประสานงาน: ${attendee.coordinatorName}` : `คุณ${attendee.firstName} ${attendee.lastName}`}
                   </span>
                   <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
-                    {attendee.status}
+                    {attendee.schoolType || attendee.status}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm">
                   <School className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>{attendee.organization}</span>
+                  <span className="font-semibold">{attendee.schoolName || attendee.organization}</span>
                 </div>
 
+                {attendee.serviceArea && (
+                  <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm">
+                    <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>เขตพื้นที่: {attendee.serviceArea}</span>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm">
-                  <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
+                  <Users className="w-4 h-4 text-blue-600 shrink-0" />
                   <span>
-                    อ.{attendee.district} จ.{attendee.province}
+                    ผู้เข้าร่วม: {attendee.attendeeCount} คน
+                    {attendee.executivesCount !== undefined || attendee.teachersCount !== undefined || attendee.studentsCount !== undefined
+                      ? ` (ผู้บริหาร ${attendee.executivesCount || 0}, ครู ${attendee.teachersCount || 0}, นร. ${attendee.studentsCount || 0})`
+                      : ''}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm">
-                  <Users className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>ผู้เข้าร่วมกลุ่ม: {attendee.attendeeCount} คน ({attendee.transportMethod})</span>
-                </div>
-
-                <div className="flex items-center gap-2 text-slate-700 text-xs sm:text-sm">
                   <Phone className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>เบอร์โทร: {attendee.phone}</span>
+                  <span>เบอร์โทร: {attendee.coordinatorPhone || attendee.phone}</span>
                 </div>
               </div>
 
