@@ -179,25 +179,60 @@ export default function App() {
   const [isAccountChooserOpen, setIsAccountChooserOpen] = useState(false);
   const [isOAuthGuideOpen, setIsOAuthGuideOpen] = useState(false);
 
-  // Sync states to LocalStorage
+  // Sync states to LocalStorage (Debounced to keep main thread completely unblocked)
   useEffect(() => {
-    localStorage.setItem('pcshs_attendees', JSON.stringify(attendees));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pcshs_attendees', JSON.stringify(attendees));
+      } catch {
+        // Handle quota or serialization safety
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [attendees]);
 
   useEffect(() => {
-    localStorage.setItem('pcshs_admins', JSON.stringify(admins));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pcshs_admins', JSON.stringify(admins));
+      } catch {
+        // Handle quota or serialization safety
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [admins]);
 
   useEffect(() => {
-    localStorage.setItem('pcshs_activities', JSON.stringify(activities));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pcshs_activities', JSON.stringify(activities));
+      } catch {
+        // Handle quota or serialization safety
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [activities]);
 
   useEffect(() => {
-    localStorage.setItem('pcshs_schedules', JSON.stringify(schedules));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pcshs_schedules', JSON.stringify(schedules));
+      } catch {
+        // Handle quota or serialization safety
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [schedules]);
 
   useEffect(() => {
-    localStorage.setItem('pcshs_audit_logs', JSON.stringify(auditLogs));
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('pcshs_audit_logs', JSON.stringify(auditLogs));
+      } catch {
+        // Handle quota or serialization safety
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [auditLogs]);
 
   useEffect(() => {

@@ -86,17 +86,17 @@ export const ClickEffectCanvas: React.FC = () => {
         y = e.touches[0].clientY;
       }
 
-      // หายไปทันทีเมื่อคลิกครั้งต่อไป: Clear previous paper airplanes instantly on new click
+      // Clear previous paper airplanes instantly on new click
       planesRef.current = [];
 
-      // Spawn 2 to 3 paper airplanes flying outwards on click
-      const spawnCount = Math.floor(Math.random() * 2) + 2; // 2 or 3 planes
+      // Spawn 2 paper airplanes flying outwards on click
+      const spawnCount = 2;
 
       for (let i = 0; i < spawnCount; i++) {
-        // Natural upward & sideways soaring trajectories (-25deg to -155deg or full 360 spread with upward bias)
+        // Natural upward & sideways soaring trajectories
         const baseAngle =
           (Math.PI * 2 * (i + Math.random() * 0.5)) / spawnCount - Math.PI / 2;
-        const initialSpeed = Math.random() * 4 + 6.5; // Smooth launch velocity
+        const initialSpeed = Math.random() * 3 + 6;
         const variant = planeVariants[Math.floor(Math.random() * planeVariants.length)];
 
         planesRef.current.push({
@@ -106,33 +106,50 @@ export const ClickEffectCanvas: React.FC = () => {
           vy: Math.sin(baseAngle) * initialSpeed,
           angle: baseAngle,
           speed: initialSpeed,
-          scale: Math.random() * 0.35 + 0.75, // Scale 0.75x to 1.1x
+          scale: Math.random() * 0.25 + 0.75,
           alpha: 1,
           life: 0,
-          maxLife: Math.random() * 35 + 55, // 55 to 90 frames (~1.0 - 1.5 seconds)
-          curveFactor: (Math.random() - 0.5) * 0.035, // Aerodynamic gentle bank curve
+          maxLife: Math.random() * 25 + 45,
+          curveFactor: (Math.random() - 0.5) * 0.03,
           wingColor: variant.wing,
           shadowColor: variant.shadow,
           accentColor: variant.accent,
           trail: [{ x, y, alpha: 1 }],
           wobblePhase: Math.random() * Math.PI * 2,
-          wobbleSpeed: Math.random() * 0.12 + 0.08,
+          wobbleSpeed: Math.random() * 0.1 + 0.08,
         });
+      }
+
+      // Start render loop only when clicked if not currently running
+      if (!animFrameRef.current) {
+        animFrameRef.current = requestAnimationFrame(render);
       }
     };
 
-    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('mousedown', handlePointerDown, { passive: true });
     window.addEventListener('touchstart', handlePointerDown, { passive: true });
 
     // Render loop for Paper Airplanes
     const render = () => {
       const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!canvas) {
+        animFrameRef.current = null;
+        return;
+      }
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        animFrameRef.current = null;
+        return;
+      }
 
-          const planes = planesRef.current;
+      const planes = planesRef.current;
+      if (planes.length === 0) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        animFrameRef.current = null;
+        return; // STOP rAF loop completely when idle!
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           for (let i = planes.length - 1; i >= 0; i--) {
             const p = planes[i];
@@ -278,12 +295,13 @@ export const ClickEffectCanvas: React.FC = () => {
 
             ctx.restore();
           }
-        }
-      }
-      animFrameRef.current = requestAnimationFrame(render);
-    };
 
-    animFrameRef.current = requestAnimationFrame(render);
+      if (planesRef.current.length > 0) {
+        animFrameRef.current = requestAnimationFrame(render);
+      } else {
+        animFrameRef.current = null;
+      }
+    };
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -291,6 +309,7 @@ export const ClickEffectCanvas: React.FC = () => {
       window.removeEventListener('touchstart', handlePointerDown);
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
       }
     };
   }, []);

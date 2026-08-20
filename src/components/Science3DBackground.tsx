@@ -128,46 +128,46 @@ export const Science3DBackground: React.FC = () => {
       <style>{`
         @keyframes floatBubbleSlow {
           0%, 100% {
-            transform: translate(0px, 0px) scale(1);
+            transform: translate3d(0px, 0px, 0) scale(1);
           }
           33% {
-            transform: translate(6px, -16px) scale(1.02);
+            transform: translate3d(6px, -16px, 0) scale(1.02);
           }
           66% {
-            transform: translate(-6px, -8px) scale(0.98);
+            transform: translate3d(-6px, -8px, 0) scale(0.98);
           }
         }
 
         @keyframes floatBubbleMedium {
           0%, 100% {
-            transform: translate(0px, 0px) scale(1);
+            transform: translate3d(0px, 0px, 0) scale(1);
           }
           33% {
-            transform: translate(-8px, -13px) scale(1.03);
+            transform: translate3d(-8px, -13px, 0) scale(1.03);
           }
           66% {
-            transform: translate(7px, -6px) scale(0.97);
+            transform: translate3d(7px, -6px, 0) scale(0.97);
           }
         }
 
         @keyframes floatBubbleFast {
           0%, 100% {
-            transform: translate(0px, 0px) scale(1);
+            transform: translate3d(0px, 0px, 0) scale(1);
           }
           50% {
-            transform: translate(4px, -10px) scale(1.04);
+            transform: translate3d(4px, -10px, 0) scale(1.04);
           }
         }
 
         @keyframes floatBubbleReverse {
           0%, 100% {
-            transform: translate(0px, 0px) scale(1);
+            transform: translate3d(0px, 0px, 0) scale(1);
           }
           33% {
-            transform: translate(7px, 13px) scale(0.98);
+            transform: translate3d(7px, 13px, 0) scale(0.98);
           }
           66% {
-            transform: translate(-5px, 6px) scale(1.02);
+            transform: translate3d(-5px, 6px, 0) scale(1.02);
           }
         }
 
@@ -184,22 +184,31 @@ export const Science3DBackground: React.FC = () => {
 
         .anim-float-slow {
           animation: floatBubbleSlow 8.5s ease-in-out infinite;
+          will-change: transform;
+          backface-visibility: hidden;
         }
 
         .anim-float-medium {
           animation: floatBubbleMedium 7s ease-in-out infinite;
+          will-change: transform;
+          backface-visibility: hidden;
         }
 
         .anim-float-fast {
           animation: floatBubbleFast 4.8s ease-in-out infinite;
+          will-change: transform;
+          backface-visibility: hidden;
         }
 
         .anim-float-reverse {
           animation: floatBubbleReverse 8s ease-in-out infinite;
+          will-change: transform;
+          backface-visibility: hidden;
         }
 
         .anim-pulse-glow {
           animation: pulseBubbleGlow 6s ease-in-out infinite;
+          will-change: transform, opacity;
         }
       `}</style>
 
