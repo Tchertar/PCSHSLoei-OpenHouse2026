@@ -175,6 +175,16 @@ export const removeLocalAttendeeRecord = (id: string) => {
   }
 };
 
+// Initial attendee field overrides (e.g. customized classifications)
+const INITIAL_ATTENDEE_OVERRIDES: Record<string, Partial<Attendee>> = {
+  att_1787053982850: {
+    schoolType: 'นักเรียน',
+    status: 'นักเรียน',
+    serviceArea: 'นักเรียน',
+    studentType: 'นักเรียน',
+  },
+};
+
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(
@@ -187,22 +197,26 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
       // 1. Load remote docs from Firestore that are not in the deleted list
       snapshot.forEach((docSnap) => {
         if (!deletedSet.has(docSnap.id)) {
-          mergedMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as Attendee);
+          const raw = { id: docSnap.id, ...docSnap.data() } as Attendee;
+          const override = INITIAL_ATTENDEE_OVERRIDES[docSnap.id] || {};
+          mergedMap.set(docSnap.id, { ...raw, ...override });
         }
       });
 
       // 2. Merge local records so offline / quota-limited writes are preserved
       Object.values(localMap).forEach((localAtt) => {
         if (deletedSet.has(localAtt.id)) return;
+        const override = INITIAL_ATTENDEE_OVERRIDES[localAtt.id] || {};
+        const mergedLocal = { ...localAtt, ...override };
         const remoteAtt = mergedMap.get(localAtt.id);
         if (!remoteAtt) {
-          mergedMap.set(localAtt.id, localAtt);
+          mergedMap.set(localAtt.id, mergedLocal);
         } else {
           // If local has newer update timestamp, prefer local
-          const localTime = localAtt.updatedAt || localAtt.registeredAt || '';
+          const localTime = mergedLocal.updatedAt || mergedLocal.registeredAt || '';
           const remoteTime = remoteAtt.updatedAt || remoteAtt.registeredAt || '';
           if (localTime >= remoteTime) {
-            mergedMap.set(localAtt.id, { ...remoteAtt, ...localAtt });
+            mergedMap.set(localAtt.id, { ...remoteAtt, ...mergedLocal });
           }
         }
       });

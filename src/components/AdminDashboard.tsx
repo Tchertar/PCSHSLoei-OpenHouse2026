@@ -194,6 +194,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Add Attendee (Admin School/Institution Entry) state
   const [showAddAttendeeModal, setShowAddAttendeeModal] = useState(false);
+  const [editingAttendeeId, setEditingAttendeeId] = useState<string | null>(null);
   const [viewingAttendeeDetail, setViewingAttendeeDetail] = useState<Attendee | null>(null);
   const [addAttendeeForm, setAddAttendeeForm] = useState({
     schoolType: 'โรงเรียนขยายโอกาสทางการศึกษา',
@@ -459,7 +460,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAttendees(updated);
   };
 
-  // Add Attendee (School / Educational Institution Entry) manually by Admin
+  const handleOpenAddAttendee = () => {
+    setEditingAttendeeId(null);
+    setAddAttendeeForm({
+      schoolType: 'โรงเรียนขยายโอกาสทางการศึกษา',
+      schoolName: '',
+      serviceArea: 'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+      studentType: 'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+      interestedActivities: 'นิทรรศการวิชาการ 8 สาขาวิชา, การประกวดโครงงานวิทยาศาสตร์',
+      executivesCount: 1,
+      teachersCount: 2,
+      studentsCount: 10,
+      coordinatorName: '',
+      coordinatorPhone: '',
+      contactEmail: '',
+      acceptanceFormUrl: '',
+    });
+    setAddAttendeeError('');
+    setShowAddAttendeeModal(true);
+  };
+
+  const handleOpenEditAttendee = (att: Attendee) => {
+    setEditingAttendeeId(att.id);
+    setAddAttendeeForm({
+      schoolType: att.schoolType || att.status || 'โรงเรียนขยายโอกาสทางการศึกษา',
+      schoolName: att.schoolName || att.organization || '',
+      serviceArea: att.serviceArea || `${att.district || ''} ${att.province || ''}`.trim() || 'ในเขตพื้นที่บริการ สพม.เลย หนองบัวลำภู',
+      studentType: att.studentType || 'นักเรียนมัธยมศึกษาตอนต้น (ม.1 - ม.3)',
+      interestedActivities: att.interestedActivities || 'นิทรรศการวิชาการ 8 สาขาวิชา, การประกวดโครงงานวิทยาศาสตร์',
+      executivesCount: att.executivesCount || 0,
+      teachersCount: att.teachersCount || 0,
+      studentsCount: att.studentsCount !== undefined ? att.studentsCount : (att.attendeeCount || 1),
+      coordinatorName: att.coordinatorName || `${att.firstName || ''} ${att.lastName || ''}`.trim(),
+      coordinatorPhone: att.coordinatorPhone || att.phone || '',
+      contactEmail: att.contactEmail || att.email || '',
+      acceptanceFormUrl: att.acceptanceFormUrl || '',
+    });
+    setAddAttendeeError('');
+    setShowAddAttendeeModal(true);
+  };
+
+  // Add / Edit Attendee (School / Educational Institution Entry) manually by Admin
   const handleAddAttendeeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddAttendeeError('');
@@ -468,28 +509,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     if (!addAttendeeForm.coordinatorName.trim()) {
-      setAddAttendeeError('กรุณากรอกชื่อ - นามสกุล ครูผู้ประสานงาน');
+      setAddAttendeeError('กรุณากรอกชื่อ - นามสกุล ครูผู้ประสานงาน หรือผู้ลงทะเบียน');
       return;
     }
     if (!addAttendeeForm.coordinatorPhone.trim()) {
-      setAddAttendeeError('กรุณากรอกเบอร์โทรศัพท์ครูผู้ประสานงาน');
+      setAddAttendeeError('กรุณากรอกเบอร์โทรศัพท์');
       return;
     }
 
     setIsSavingAttendee(true);
     try {
-      const participantCode = getNextConsecutiveParticipantCode(attendees);
-      const emailVal = addAttendeeForm.contactEmail.trim() || `school_${Date.now()}@pcshsloei.ac.th`;
-      const passVal = addAttendeeForm.coordinatorPhone.replace(/\D/g, '') || '123456';
-
       const execCount = Number(addAttendeeForm.executivesCount) || 0;
       const teacherCount = Number(addAttendeeForm.teachersCount) || 0;
       const studCount = Number(addAttendeeForm.studentsCount) || 0;
       const totalCount = (execCount + teacherCount + studCount) || 1;
 
       const nameParts = addAttendeeForm.coordinatorName.trim().split(/\s+/);
-      const firstName = nameParts[0] || 'ครูผู้ประสานงาน';
+      const firstName = nameParts[0] || 'ผู้ประสานงาน';
       const lastName = nameParts.slice(1).join(' ') || addAttendeeForm.schoolName.trim();
+
+      // If editing existing attendee
+      if (editingAttendeeId) {
+        const existing = attendees.find((a) => a.id === editingAttendeeId);
+        if (existing) {
+          const updatedAtt: Attendee = {
+            ...existing,
+            firstName,
+            lastName,
+            phone: addAttendeeForm.coordinatorPhone.trim() || existing.phone,
+            organization: addAttendeeForm.schoolName.trim() || existing.organization,
+            schoolType: addAttendeeForm.schoolType.trim(),
+            schoolName: addAttendeeForm.schoolName.trim(),
+            serviceArea: addAttendeeForm.serviceArea.trim(),
+            studentType: addAttendeeForm.studentType.trim(),
+            interestedActivities: addAttendeeForm.interestedActivities.trim(),
+            executivesCount: execCount,
+            teachersCount: teacherCount,
+            studentsCount: studCount,
+            attendeeCount: totalCount,
+            coordinatorName: addAttendeeForm.coordinatorName.trim(),
+            coordinatorPhone: addAttendeeForm.coordinatorPhone.trim(),
+            contactEmail: addAttendeeForm.contactEmail.trim(),
+            acceptanceFormUrl: addAttendeeForm.acceptanceFormUrl.trim(),
+            updatedAt: new Date().toISOString(),
+          };
+          if (addAttendeeForm.schoolType.trim() === 'นักเรียน') {
+            updatedAtt.status = 'นักเรียน';
+          }
+
+          await saveAttendeeToFirestore(updatedAtt);
+          setAttendees((prev) => prev.map((a) => (a.id === editingAttendeeId ? updatedAtt : a)));
+          addAuditLog(
+            'แก้ไขข้อมูลสถานศึกษา/ผู้ลงทะเบียน',
+            `แอดมิน ${currentAdmin.name} แก้ไขข้อมูล ${updatedAtt.participantCode} (${updatedAtt.schoolName} - ประเภท: ${updatedAtt.schoolType}) สำเร็จ`
+          );
+
+          setShowAddAttendeeModal(false);
+          setEditingAttendeeId(null);
+          alert(`✅ บันทึกการแก้ไขข้อมูลสำเร็จ!\n\nรหัสประจำตัว: ${updatedAtt.participantCode}\nสถานศึกษา: ${updatedAtt.schoolName}\nประเภทโรงเรียน: ${updatedAtt.schoolType}\nเขตพื้นที่: ${updatedAtt.serviceArea}`);
+          return;
+        }
+      }
+
+      // If creating new attendee
+      const participantCode = getNextConsecutiveParticipantCode(attendees);
+      const emailVal = addAttendeeForm.contactEmail.trim() || `school_${Date.now()}@pcshsloei.ac.th`;
+      const passVal = addAttendeeForm.coordinatorPhone.replace(/\D/g, '') || '123456';
 
       const newAtt: Attendee = {
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -500,7 +585,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         firstName,
         lastName,
         phone: addAttendeeForm.coordinatorPhone.trim(),
-        status: 'ครู/อาจารย์',
+        status: addAttendeeForm.schoolType.trim() === 'นักเรียน' ? 'นักเรียน' : 'ครู/อาจารย์',
         organization: addAttendeeForm.schoolName.trim(),
         district: addAttendeeForm.serviceArea.trim() || 'เมืองเลย',
         province: addAttendeeForm.serviceArea.includes('หนองบัวลำภู')
@@ -1803,10 +1888,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
 
                   <button
-                    onClick={() => {
-                      setAddAttendeeError('');
-                      setShowAddAttendeeModal(true);
-                    }}
+                    onClick={handleOpenAddAttendee}
                     title="เพิ่มข้อมูลผู้ลงทะเบียนรายบุคคลโดยแอดมิน"
                     className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-orange-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-orange-400/30"
                   >
@@ -1972,6 +2054,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               >
                                 <Eye className="w-3.5 h-3.5 text-slate-600" />
                                 <span>ดูข้อมูล</span>
+                              </button>
+                              <button
+                                onClick={() => handleOpenEditAttendee(att)}
+                                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="แก้ไขข้อมูลสถานศึกษา / ผู้ลงทะเบียน"
+                              >
+                                <Edit className="w-3.5 h-3.5 text-amber-600" />
+                                <span>แก้ไข</span>
                               </button>
                               <button
                                 onClick={() => handleToggleCheckIn(att.id)}
@@ -3328,10 +3418,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base sm:text-lg leading-tight">
-                    เพิ่มข้อมูลสถานศึกษา / โรงเรียน (แอดมิน)
+                    {editingAttendeeId ? 'แก้ไขข้อมูลสถานศึกษา / ผู้ลงทะเบียน' : 'เพิ่มข้อมูลสถานศึกษา / โรงเรียน (แอดมิน)'}
                   </h3>
                   <p className="text-xs text-amber-100">
-                    บันทึกข้อมูลประเภทสถานศึกษา 12 คอลัมน์ พร้อมสร้างรหัสต่อเนื่องและ QR Code ให้อัตโนมัติ
+                    {editingAttendeeId
+                      ? 'ปรับปรุงข้อมูลประเภทสถานศึกษา เขตพื้นที่ รายชื่อผู้ประสานงาน และจำนวนผู้เข้าร่วม'
+                      : 'บันทึกข้อมูลประเภทสถานศึกษา 12 คอลัมน์ พร้อมสร้างรหัสต่อเนื่องและ QR Code ให้อัตโนมัติ'}
                   </p>
                 </div>
               </div>
@@ -3362,7 +3454,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      ประเภทของโรงเรียน <span className="text-red-500">*</span>
+                      ประเภทของโรงเรียน / สถานะ <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={addAttendeeForm.schoolType}
@@ -3374,6 +3466,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <option value="โรงเรียนประถมศึกษา (สพป.)">โรงเรียนประถมศึกษา (สพป.)</option>
                       <option value="โรงเรียนเอกชน">โรงเรียนเอกชน</option>
                       <option value="โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ">โรงเรียนสาธิต / สถาบันการศึกษาอื่นๆ</option>
+                      <option value="นักเรียน">นักเรียน</option>
+                      <option value="บุคคลทั่วไป">บุคคลทั่วไป</option>
                     </select>
                   </div>
 
@@ -3556,11 +3650,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Automatic Consecutive Code Info */}
+              {/* Automatic Consecutive Code / Current Code Info */}
               <div className="p-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-xl flex items-center justify-between text-xs">
-                <span className="text-slate-600">รหัสประจำตัวที่จะสร้างให้อัตโนมัติ:</span>
+                <span className="text-slate-600">
+                  {editingAttendeeId ? 'รหัสประจำตัวผู้ลงทะเบียน:' : 'รหัสประจำตัวที่จะสร้างให้อัตโนมัติ:'}
+                </span>
                 <span className="font-mono font-bold text-orange-600 text-sm bg-white px-2.5 py-0.5 rounded-lg border border-orange-300 shadow-2xs">
-                  {getNextConsecutiveParticipantCode(attendees)}
+                  {editingAttendeeId
+                    ? attendees.find((a) => a.id === editingAttendeeId)?.participantCode || ''
+                    : getNextConsecutiveParticipantCode(attendees)}
                 </span>
               </div>
 
@@ -3586,7 +3684,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ) : (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>บันทึกข้อมูลสถานศึกษา</span>
+                      <span>{editingAttendeeId ? 'บันทึกการแก้ไข' : 'บันทึกข้อมูลสถานศึกษา'}</span>
                     </>
                   )}
                 </button>
