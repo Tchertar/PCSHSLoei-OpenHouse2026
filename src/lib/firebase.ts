@@ -66,31 +66,52 @@ export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] =>
   });
 };
 
+// IDs of deleted attendees (PCSHS-0001 to PCSHS-0028 from previous import)
+export const DELETED_ATTENDEE_IDS = new Set([
+  'att_1787242591226_0_zyj0',
+  'att_1787242591235_1_34ef',
+  'att_1787242591236_2_pr1l',
+  'att_1787242591236_3_7ko8',
+  'att_1787242591236_4_tm90',
+  'att_1787242591236_5_k055',
+  'att_1787242591236_6_x8n3',
+  'att_1787242591237_10_nswe',
+  'att_1787242591237_11_u6vo',
+  'att_1787242591237_7_2u1s',
+  'att_1787242591237_8_j9j7',
+  'att_1787242591237_9_a3ss',
+  'att_1787242591238_12_vwti',
+  'att_1787242591238_13_t0ha',
+  'att_1787242591238_14_m9i4',
+  'att_1787242591238_15_cnws',
+  'att_1787242591238_16_lcy5',
+  'att_1787242591238_17_9xa1',
+  'att_1787242591238_18_c93j',
+  'att_1787242591238_19_0cfh',
+  'att_1787242591239_20_zsiw',
+  'att_1787242591239_21_vffz',
+  'att_1787242591239_22_c5ho',
+  'att_1787242591239_23_v1kz',
+  'att_1787242591239_24_jh9y',
+  'att_1787242591239_25_uevf',
+  'att_1787242591240_26_uibd',
+  'att_1787242591240_27_znhl',
+]);
+
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(q, (snapshot) => {
     const list: Attendee[] = [];
     snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
+      // Exclude permanently deleted IDs
+      if (!DELETED_ATTENDEE_IDS.has(docSnap.id)) {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
+      }
     });
     
-    // Check if any attendee has old random/unsequenced format (e.g. PCSHS2026- or unsorted)
-    const needsResequencing = list.some((a) => !a.participantCode || a.participantCode.includes('PCSHS2026-') || !a.participantCode.match(/^PCSHS-\d{4}$/));
-    
-    if (needsResequencing && list.length > 0) {
-      const resequenced = resequenceAllAttendees(list);
-      // Asynchronously update in Firestore
-      saveAllAttendeesToFirestore(resequenced).catch(console.error);
-      callback(resequenced);
-    } else {
-      // Sort in display order
-      list.sort((a, b) => {
-        const numA = parseInt((a.participantCode.match(/\d+/) || ['0'])[0], 10);
-        const numB = parseInt((b.participantCode.match(/\d+/) || ['0'])[0], 10);
-        return numA - numB;
-      });
-      callback(list);
-    }
+    // Always sequence reliably based on registration timestamp
+    const resequenced = resequenceAllAttendees(list);
+    callback(resequenced);
   }, (err) => {
     console.error("Firestore attendees subscription error:", err);
   });
