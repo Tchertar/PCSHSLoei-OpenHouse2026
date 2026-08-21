@@ -46,6 +46,7 @@ export interface Attendee {
   actualStudentsCount?: number; // จำนวนนักเรียนที่มาร่วมจริง
   actualAttendeeCount?: number; // ยอดรวมผู้มาร่วมงานจริง (คน)
   actualNotes?: string; // หมายเหตุการเช็คอิน
+  updatedAt?: string; // เวลาอัปเดตข้อมูลล่าสุด
 }
 
 export type AdminRole = 'super_admin' | 'admin';

@@ -123,44 +123,138 @@ export const markAttendeeAsDeleted = (id: string) => {
   }
 };
 
+// Local storage backup for newly created/updated attendees
+export const getLocallySavedAttendees = (): Record<string, Attendee> => {
+  try {
+    const stored = localStorage.getItem('pcshs_locally_saved_attendees');
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.error('Error reading local attendees:', e);
+  }
+  return {};
+};
+
+export const saveLocalAttendeeRecord = (attendee: Attendee) => {
+  try {
+    const current = getLocallySavedAttendees();
+    current[attendee.id] = attendee;
+    localStorage.setItem('pcshs_locally_saved_attendees', JSON.stringify(current));
+
+    // Also update main cache immediately
+    const rawCache = localStorage.getItem('pcshs_attendees');
+    let cacheList: Attendee[] = rawCache ? JSON.parse(rawCache) : [];
+    const idx = cacheList.findIndex((a) => a.id === attendee.id);
+    if (idx >= 0) {
+      cacheList[idx] = attendee;
+    } else {
+      cacheList = [attendee, ...cacheList];
+    }
+    localStorage.setItem('pcshs_attendees', JSON.stringify(cacheList));
+  } catch (e) {
+    console.error('Error writing local attendee:', e);
+  }
+};
+
+export const removeLocalAttendeeRecord = (id: string) => {
+  try {
+    const current = getLocallySavedAttendees();
+    if (current[id]) {
+      delete current[id];
+      localStorage.setItem('pcshs_locally_saved_attendees', JSON.stringify(current));
+    }
+    const rawCache = localStorage.getItem('pcshs_attendees');
+    if (rawCache) {
+      const cacheList: Attendee[] = JSON.parse(rawCache);
+      const filtered = cacheList.filter((a) => a.id !== id);
+      localStorage.setItem('pcshs_attendees', JSON.stringify(filtered));
+    }
+  } catch (e) {
+    console.error('Error removing local attendee:', e);
+  }
+};
+
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(
     q,
     (snapshot) => {
       const deletedSet = getDeletedAttendeeIds();
-      const list: Attendee[] = [];
+      const localMap = getLocallySavedAttendees();
+      const mergedMap = new Map<string, Attendee>();
+
+      // 1. Load remote docs from Firestore that are not in the deleted list
       snapshot.forEach((docSnap) => {
-        // Exclude permanently deleted IDs
         if (!deletedSet.has(docSnap.id)) {
-          list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
+          mergedMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as Attendee);
         }
       });
 
-      // Always sequence reliably based on registration timestamp
+      // 2. Merge local records so offline / quota-limited writes are preserved
+      Object.values(localMap).forEach((localAtt) => {
+        if (deletedSet.has(localAtt.id)) return;
+        const remoteAtt = mergedMap.get(localAtt.id);
+        if (!remoteAtt) {
+          mergedMap.set(localAtt.id, localAtt);
+        } else {
+          // If local has newer update timestamp, prefer local
+          const localTime = localAtt.updatedAt || localAtt.registeredAt || '';
+          const remoteTime = remoteAtt.updatedAt || remoteAtt.registeredAt || '';
+          if (localTime >= remoteTime) {
+            mergedMap.set(localAtt.id, { ...remoteAtt, ...localAtt });
+          }
+        }
+      });
+
+      const list = Array.from(mergedMap.values());
       const resequenced = resequenceAllAttendees(list);
+
+      // Keep localStorage cache updated
+      try {
+        localStorage.setItem('pcshs_attendees', JSON.stringify(resequenced));
+      } catch {}
+
       callback(resequenced);
     },
     (err) => {
-      console.error('Firestore attendees subscription error:', err);
+      console.warn('Firestore attendees subscription fallback to local cache:', err);
+      const deletedSet = getDeletedAttendeeIds();
+      const localMap = getLocallySavedAttendees();
+      const rawCache = localStorage.getItem('pcshs_attendees');
+      let fallbackList: Attendee[] = rawCache ? JSON.parse(rawCache) : Object.values(localMap);
+      fallbackList = fallbackList.filter((a) => !deletedSet.has(a.id));
+      const resequenced = resequenceAllAttendees(fallbackList);
+      callback(resequenced);
     }
   );
 };
 
 export const saveAttendeeToFirestore = async (attendee: Attendee) => {
+  const docId =
+    attendee.id ||
+    (attendee.participantCode
+      ? `att_${attendee.participantCode.replace(/[^a-zA-Z0-9]/g, '_')}`
+      : `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+
+  const dataToSave: Attendee = {
+    ...attendee,
+    id: docId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 1. Immediately store to local storage so it will NEVER be lost on refresh
+  saveLocalAttendeeRecord(dataToSave);
+
+  // 2. Write to Firebase Firestore in background with error safety
   try {
-    const docId = attendee.id || `att_${attendee.participantCode.replace(/[^a-zA-Z0-9]/g, '_')}`;
     const docRef = doc(db, ATTENDEES_COLLECTION, docId);
-    const dataToSave = {
-      ...attendee,
-      id: docId,
-      updatedAt: new Date().toISOString(),
-    };
     await setDoc(docRef, dataToSave, { merge: true });
-    return docId;
   } catch (err) {
-    console.error('Error saving attendee to Firestore:', err);
+    console.warn('Note: Could not write attendee to Firestore remote, persisted locally:', err);
   }
+
+  return docId;
 };
 
 export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => {
@@ -174,39 +268,67 @@ export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => 
 };
 
 export const deleteAttendeeFromFirestore = async (id: string) => {
-  // 1. Immediately mark as deleted locally so it will never reappear
+  // 1. Mark as deleted in persistent store
   markAttendeeAsDeleted(id);
 
-  // 2. Attempt Firestore deletion with error safety
+  // 2. Remove from local store
+  removeLocalAttendeeRecord(id);
+
+  // 3. Attempt Firestore deletion with error safety
   try {
     await deleteDoc(doc(db, ATTENDEES_COLLECTION, id));
   } catch (err) {
-    console.warn('Note: Could not delete doc from remote Firestore (quota or offline), marked locally deleted:', err);
+    console.warn('Note: Could not delete doc from remote Firestore, marked locally deleted:', err);
   }
 };
 
 // --- ADMINS ---
 export const subscribeAdmins = (callback: (data: AdminUser[]) => void) => {
   const q = query(collection(db, ADMINS_COLLECTION));
-  return onSnapshot(q, (snapshot) => {
-    const list: AdminUser[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as AdminUser);
-    });
-    callback(list);
-  }, (err) => {
-    console.error("Firestore admins subscription error:", err);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: AdminUser[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as AdminUser);
+      });
+      if (list.length > 0) {
+        try {
+          localStorage.setItem('pcshs_admins', JSON.stringify(list));
+        } catch {}
+      }
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore admins subscription fallback:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_admins');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
 };
 
 export const saveAdminToFirestore = async (admin: AdminUser) => {
+  const docId = admin.id || `adm_${admin.username}`;
+  const dataToSave = { ...admin, id: docId, updatedAt: new Date().toISOString() };
+
   try {
-    const docId = admin.id || `adm_${admin.username}`;
+    const raw = localStorage.getItem('pcshs_admins');
+    let list: AdminUser[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((a) => a.id === docId);
+    if (idx >= 0) list[idx] = dataToSave;
+    else list.push(dataToSave);
+    localStorage.setItem('pcshs_admins', JSON.stringify(list));
+  } catch {}
+
+  try {
     const docRef = doc(db, ADMINS_COLLECTION, docId);
-    await setDoc(docRef, { ...admin, id: docId, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, dataToSave, { merge: true });
     return docId;
   } catch (err) {
-    console.error("Error saving admin to Firestore:", err);
+    console.warn('Note: Could not save admin to Firestore remote, saved locally:', err);
+    return docId;
   }
 };
 
@@ -216,40 +338,73 @@ export const saveAllAdminsToFirestore = async (adminsList: AdminUser[]) => {
       await saveAdminToFirestore(admin);
     }
   } catch (err) {
-    console.error("Error bulk saving admins to Firestore:", err);
+    console.error('Error bulk saving admins to Firestore:', err);
   }
 };
 
 export const deleteAdminFromFirestore = async (id: string) => {
   try {
+    const raw = localStorage.getItem('pcshs_admins');
+    if (raw) {
+      const list: AdminUser[] = JSON.parse(raw);
+      localStorage.setItem('pcshs_admins', JSON.stringify(list.filter((a) => a.id !== id)));
+    }
+  } catch {}
+
+  try {
     await deleteDoc(doc(db, ADMINS_COLLECTION, id));
   } catch (err) {
-    console.error("Error deleting admin from Firestore:", err);
+    console.warn('Note: Could not delete admin from remote Firestore:', err);
   }
 };
 
 // --- ACTIVITIES ---
 export const subscribeActivities = (callback: (data: ActivityItem[]) => void) => {
   const q = query(collection(db, ACTIVITIES_COLLECTION));
-  return onSnapshot(q, (snapshot) => {
-    const list: ActivityItem[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as ActivityItem);
-    });
-    callback(list);
-  }, (err) => {
-    console.error("Firestore activities subscription error:", err);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: ActivityItem[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as ActivityItem);
+      });
+      if (list.length > 0) {
+        try {
+          localStorage.setItem('pcshs_activities', JSON.stringify(list));
+        } catch {}
+      }
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore activities subscription fallback:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_activities');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
 };
 
 export const saveActivityToFirestore = async (activity: ActivityItem) => {
+  const docId = activity.id || `act_${Date.now()}`;
+  const dataToSave = { ...activity, id: docId, updatedAt: new Date().toISOString() };
+
   try {
-    const docId = activity.id || `act_${Date.now()}`;
+    const raw = localStorage.getItem('pcshs_activities');
+    let list: ActivityItem[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((a) => a.id === docId);
+    if (idx >= 0) list[idx] = dataToSave;
+    else list.push(dataToSave);
+    localStorage.setItem('pcshs_activities', JSON.stringify(list));
+  } catch {}
+
+  try {
     const docRef = doc(db, ACTIVITIES_COLLECTION, docId);
-    await setDoc(docRef, { ...activity, id: docId, updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, dataToSave, { merge: true });
     return docId;
   } catch (err) {
-    console.error("Error saving activity to Firestore:", err);
+    console.warn('Note: Could not save activity to Firestore remote, saved locally:', err);
+    return docId;
   }
 };
 
@@ -259,41 +414,72 @@ export const saveAllActivitiesToFirestore = async (activitiesList: ActivityItem[
       await saveActivityToFirestore(activity);
     }
   } catch (err) {
-    console.error("Error bulk saving activities to Firestore:", err);
+    console.error('Error bulk saving activities to Firestore:', err);
   }
 };
 
 export const deleteActivityFromFirestore = async (id: string) => {
   try {
+    const raw = localStorage.getItem('pcshs_activities');
+    if (raw) {
+      const list: ActivityItem[] = JSON.parse(raw);
+      localStorage.setItem('pcshs_activities', JSON.stringify(list.filter((a) => a.id !== id)));
+    }
+  } catch {}
+
+  try {
     await deleteDoc(doc(db, ACTIVITIES_COLLECTION, id));
   } catch (err) {
-    console.error("Error deleting activity from Firestore:", err);
+    console.warn('Note: Could not delete activity from remote Firestore:', err);
   }
 };
 
 // --- AUDIT LOGS ---
 export const subscribeAuditLogs = (callback: (data: AuditLog[]) => void) => {
   const q = query(collection(db, AUDIT_LOGS_COLLECTION));
-  return onSnapshot(q, (snapshot) => {
-    const list: AuditLog[] = [];
-    snapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
-    });
-    list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-    callback(list);
-  }, (err) => {
-    console.error("Firestore audit logs subscription error:", err);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: AuditLog[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
+      });
+      list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+      if (list.length > 0) {
+        try {
+          localStorage.setItem('pcshs_audit_logs', JSON.stringify(list));
+        } catch {}
+      }
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore audit logs subscription fallback:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_audit_logs');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
 };
 
 export const saveAuditLogToFirestore = async (log: AuditLog) => {
+  const docId = log.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const dataToSave = { ...log, id: docId };
+
   try {
-    const docId = log.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const raw = localStorage.getItem('pcshs_audit_logs');
+    let list: AuditLog[] = raw ? JSON.parse(raw) : [];
+    list.unshift(dataToSave);
+    localStorage.setItem('pcshs_audit_logs', JSON.stringify(list.slice(0, 100)));
+  } catch {}
+
+  try {
     const docRef = doc(db, AUDIT_LOGS_COLLECTION, docId);
-    await setDoc(docRef, { ...log, id: docId }, { merge: true });
+    await setDoc(docRef, dataToSave, { merge: true });
     return docId;
   } catch (err) {
-    console.error("Error saving audit log to Firestore:", err);
+    console.warn('Note: Could not save audit log to Firestore remote, saved locally:', err);
+    return docId;
   }
 };
 
@@ -303,7 +489,7 @@ export const saveAllAuditLogsToFirestore = async (logsList: AuditLog[]) => {
       await saveAuditLogToFirestore(log);
     }
   } catch (err) {
-    console.error("Error bulk saving audit logs to Firestore:", err);
+    console.error('Error bulk saving audit logs to Firestore:', err);
   }
 };
 
