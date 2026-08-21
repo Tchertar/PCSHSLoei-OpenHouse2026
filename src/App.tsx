@@ -440,6 +440,18 @@ export default function App() {
         initialTab={loginInitialTab}
         onAdminLoginSuccess={handleAdminLoginSuccess}
         onAttendeeLoginSuccess={handleAttendeeLoginSuccess}
+        onAttendeeUpdated={(updated) => {
+          setAttendees((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+          if (currentAttendee?.id === updated.id) {
+            setCurrentAttendee(updated);
+          }
+        }}
+        onAdminUpdated={(updated) => {
+          setAdmins((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+          if (currentAdmin?.id === updated.id) {
+            setCurrentAdmin(updated);
+          }
+        }}
       />
 
       {/* Admin Dashboard */}

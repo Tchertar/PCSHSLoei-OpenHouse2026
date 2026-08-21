@@ -59,6 +59,7 @@ export interface AdminUser {
   role: AdminRole;
   password?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface AuditLog {

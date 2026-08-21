@@ -231,6 +231,155 @@ app.post('/api/auth/verify-otp', (req, res) => {
   });
 });
 
+// API Endpoint: Send Password Reset Code by Email
+app.post('/api/auth/send-password-reset', async (req, res) => {
+  const { email, name, userType } = req.body;
+
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      error: 'กรุณาระบุอีเมลที่ถูกต้องเพื่อรับรหัสรีเซ็ตรหัสผ่าน',
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  // Valid for 15 minutes
+  const expiresAt = Date.now() + 15 * 60 * 1000;
+  const storeKey = `reset_${normalizedEmail}`;
+
+  otpStore[storeKey] = { code, expiresAt };
+  console.log(`[Password Reset OTP Generated] Email: ${normalizedEmail}, Code: ${code}`);
+
+  let emailSentReal = false;
+  let emailErrorMessage = '';
+
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = Number(process.env.SMTP_PORT) || 465;
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const smtpFrom = process.env.SMTP_FROM || `PCSHS Loei Open House 2026 <no-reply@pcshsloei.ac.th>`;
+
+  if (smtpUser && smtpPass) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+
+      const mailOptions = {
+        from: smtpFrom,
+        to: normalizedEmail,
+        subject: `[PCSHS Loei Open House 2026] รหัสรีเซ็ตรหัสผ่าน OTP: ${code}`,
+        html: `
+          <div style="font-family: 'Prompt', 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; background-color: #f8fafc; border-radius: 16px; border: 1px solid #e2e8f0; color: #1e293b;">
+            <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ea580c;">
+              <h1 style="color: #ea580c; font-size: 20px; margin: 0; font-weight: bold;">โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย</h1>
+              <p style="color: #64748b; font-size: 13px; margin-top: 4px;">ระบบลงทะเบียนและยืนยันตัวตน PCSHS Loei Open House 2026</p>
+            </div>
+            <div style="padding: 24px 0;">
+              <h2 style="font-size: 17px; color: #0f172a; margin-top: 0;">คำขอรีเซ็ตรหัสผ่านเข้าสู่ระบบ (Password Reset Request)</h2>
+              <p style="font-size: 15px; color: #334155; line-height: 1.6;">
+                สวัสดีคุณ <strong>${name || 'ผู้ใช้งาน'}</strong> (${userType === 'admin' ? 'ผู้ดูแลระบบ Admin' : 'ผู้เข้าร่วมงาน'}),
+              </p>
+              <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+                เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชีที่ใช้อีเมล <strong>${normalizedEmail}</strong><br />
+                กรุณานำรหัสยืนยันตัวตน 6 หลัก (OTP) ด้านล่างนี้ไปกรอกในหน้าต่างตั้งรหัสผ่านใหม่:
+              </p>
+              <div style="text-align: center; margin: 28px 0;">
+                <div style="display: inline-block; background-color: #fff7ed; border: 2px dashed #ea580c; border-radius: 14px; padding: 18px 36px; box-shadow: 0 4px 6px -1px rgba(234, 88, 12, 0.1);">
+                  <div style="font-size: 11px; font-weight: bold; color: #c2410c; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">รหัสยืนยันความปลอดภัย (OTP)</div>
+                  <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #ea580c; font-family: monospace;">${code}</div>
+                </div>
+              </div>
+              <div style="background-color: #f1f5f9; border-radius: 10px; padding: 14px 18px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+                <p style="font-size: 12px; color: #475569; margin: 0; line-height: 1.5;">
+                  ⏱️ <strong>ข้อควรระวัง:</strong> รหัสยืนยันนี้มีอายุการใช้งาน <strong>15 นาที</strong> และใช้ได้เพียงครั้งเดียว<br />
+                  🔒 หากท่านไม่ได้เป็นผู้ส่งคำขอนี้ ท่านสามารถละเว้นอีเมลนี้ได้โดยปลอดภัย บัญชีของท่านจะไม่ถูกเปลี่ยนแปลง
+                </p>
+              </div>
+            </div>
+            <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; text-align: center; font-size: 11px; color: #94a3b8; margin-top: 20px;">
+              © 2026 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย | PCSHS Loei Open House System
+            </div>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      emailSentReal = true;
+      console.log(`[SMTP Success] Sent password reset OTP email to ${normalizedEmail}`);
+    } catch (err: any) {
+      console.error('[SMTP Error] Failed to send password reset email via SMTP:', err.message);
+      emailErrorMessage = err.message;
+    }
+  } else {
+    console.log(`[SMTP Config Note] SMTP_USER/PASS not set. Reset code generated for ${normalizedEmail}: ${code}`);
+  }
+
+  return res.json({
+    success: true,
+    email: normalizedEmail,
+    emailSentReal,
+    emailError: emailErrorMessage || undefined,
+    otp: code,
+    message: emailSentReal
+      ? `ส่งรหัสรีเซ็ตรหัสผ่านไปยังอีเมล ${normalizedEmail} เรียบร้อยแล้ว`
+      : `ระบบส่งรหัสรีเซ็ตรหัสผ่าน (${code}) ไปยังอีเมล ${normalizedEmail} แล้ว`,
+  });
+});
+
+// API Endpoint: Verify Password Reset OTP
+app.post('/api/auth/verify-password-reset-otp', (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({
+      success: false,
+      error: 'กรุณาระบุอีเมลและรหัส OTP ให้ครบถ้วน',
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const storeKey = `reset_${normalizedEmail}`;
+  const record = otpStore[storeKey];
+
+  if (!record) {
+    return res.status(400).json({
+      success: false,
+      error: 'ไม่พบคำขอรีเซ็ตรหัสผ่านสำหรับอีเมลนี้ หรือรหัสหมดอายุแล้ว กรุณากดขอรหัสใหม่อีกครั้ง',
+    });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    delete otpStore[storeKey];
+    return res.status(400).json({
+      success: false,
+      error: 'รหัส OTP หมดอายุแล้ว (เกิน 15 นาที) กรุณากดขอรหัสยืนยันใหม่อีกครั้ง',
+    });
+  }
+
+  if (record.code !== code.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'รหัส OTP ไม่ถูกต้อง กรุณาตรวจสอบรหัส 6 หลักจากอีเมลที่ได้รับแล้วลองใหม่อีกครั้ง',
+    });
+  }
+
+  // OTP verified successfully
+  delete otpStore[storeKey];
+
+  return res.json({
+    success: true,
+    message: 'ยืนยันรหัส OTP ถูกต้อง ท่านสามารถตั้งรหัสผ่านใหม่ได้ทันที',
+  });
+});
+
 async function startServer() {
   // Vite middleware for development vs static serve for production
   if (process.env.NODE_ENV !== 'production') {
