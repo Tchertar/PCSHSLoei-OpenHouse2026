@@ -66,8 +66,8 @@ export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] =>
   });
 };
 
-// IDs of deleted attendees (PCSHS-0001 to PCSHS-0028 from previous import)
-export const DELETED_ATTENDEE_IDS = new Set([
+// Base set of deleted attendee IDs (initial cleaned batches)
+const INITIAL_DELETED_ATTENDEE_IDS = [
   'att_1787242591226_0_zyj0',
   'att_1787242591235_1_34ef',
   'att_1787242591236_2_pr1l',
@@ -96,25 +96,55 @@ export const DELETED_ATTENDEE_IDS = new Set([
   'att_1787242591239_25_uevf',
   'att_1787242591240_26_uibd',
   'att_1787242591240_27_znhl',
-]);
+  'att_1787242591240_28_0dhe',
+];
+
+export const getDeletedAttendeeIds = (): Set<string> => {
+  const set = new Set<string>(INITIAL_DELETED_ATTENDEE_IDS);
+  try {
+    const stored = localStorage.getItem('pcshs_deleted_attendee_ids');
+    if (stored) {
+      const parsed: string[] = JSON.parse(stored);
+      parsed.forEach((id) => set.add(id));
+    }
+  } catch (e) {
+    console.error('Error reading deleted attendee ids from localStorage:', e);
+  }
+  return set;
+};
+
+export const markAttendeeAsDeleted = (id: string) => {
+  try {
+    const current = getDeletedAttendeeIds();
+    current.add(id);
+    localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Error writing deleted attendee id to localStorage:', e);
+  }
+};
 
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
-  return onSnapshot(q, (snapshot) => {
-    const list: Attendee[] = [];
-    snapshot.forEach((docSnap) => {
-      // Exclude permanently deleted IDs
-      if (!DELETED_ATTENDEE_IDS.has(docSnap.id)) {
-        list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
-      }
-    });
-    
-    // Always sequence reliably based on registration timestamp
-    const resequenced = resequenceAllAttendees(list);
-    callback(resequenced);
-  }, (err) => {
-    console.error("Firestore attendees subscription error:", err);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const deletedSet = getDeletedAttendeeIds();
+      const list: Attendee[] = [];
+      snapshot.forEach((docSnap) => {
+        // Exclude permanently deleted IDs
+        if (!deletedSet.has(docSnap.id)) {
+          list.push({ id: docSnap.id, ...docSnap.data() } as Attendee);
+        }
+      });
+
+      // Always sequence reliably based on registration timestamp
+      const resequenced = resequenceAllAttendees(list);
+      callback(resequenced);
+    },
+    (err) => {
+      console.error('Firestore attendees subscription error:', err);
+    }
+  );
 };
 
 export const saveAttendeeToFirestore = async (attendee: Attendee) => {
@@ -124,12 +154,12 @@ export const saveAttendeeToFirestore = async (attendee: Attendee) => {
     const dataToSave = {
       ...attendee,
       id: docId,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
     await setDoc(docRef, dataToSave, { merge: true });
     return docId;
   } catch (err) {
-    console.error("Error saving attendee to Firestore:", err);
+    console.error('Error saving attendee to Firestore:', err);
   }
 };
 
@@ -139,15 +169,19 @@ export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => 
       await saveAttendeeToFirestore(attendee);
     }
   } catch (err) {
-    console.error("Error bulk saving attendees to Firestore:", err);
+    console.error('Error bulk saving attendees to Firestore:', err);
   }
 };
 
 export const deleteAttendeeFromFirestore = async (id: string) => {
+  // 1. Immediately mark as deleted locally so it will never reappear
+  markAttendeeAsDeleted(id);
+
+  // 2. Attempt Firestore deletion with error safety
   try {
     await deleteDoc(doc(db, ATTENDEES_COLLECTION, id));
   } catch (err) {
-    console.error("Error deleting attendee from Firestore:", err);
+    console.warn('Note: Could not delete doc from remote Firestore (quota or offline), marked locally deleted:', err);
   }
 };
 

@@ -947,7 +947,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setShowSuperAdminPassword(false);
   };
 
-  const handleConfirmDeleteAttendee = (e: React.FormEvent) => {
+  const handleConfirmDeleteAttendee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deletingAttendee) return;
 
@@ -965,25 +965,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
 
+    const target = deletingAttendee;
+
     // Delete attendee locally
-    const updated = attendees.filter((a) => a.id !== deletingAttendee.id);
+    const updated = attendees.filter((a) => a.id !== target.id);
     setAttendees(updated);
 
-    // Delete attendee from Firebase Firestore
-    deleteAttendeeFromFirestore(deletingAttendee.id);
+    // Delete attendee from Firebase Firestore and persistent store
+    await deleteAttendeeFromFirestore(target.id);
 
     // Add audit log
     addAuditLog(
       'ลบผู้ลงทะเบียน (Super Admin)',
-      `ลบข้อมูลผู้ลงทะเบียน ${deletingAttendee.participantCode} (${deletingAttendee.firstName} ${deletingAttendee.lastName}) ออกจากระบบและฐานข้อมูล Firebase`
+      `ลบข้อมูลผู้ลงทะเบียน ${target.participantCode} (${target.firstName} ${target.lastName}) ออกจากระบบเรียบร้อย`
     );
-
-    alert(`✅ ลบข้อมูลผู้ลงทะเบียน ${deletingAttendee.firstName} ${deletingAttendee.lastName} (${deletingAttendee.participantCode}) เรียบร้อยแล้ว`);
 
     // Reset state
     setDeletingAttendee(null);
     setSuperAdminPasswordInput('');
     setSuperAdminPasswordError('');
+
+    alert(`✅ ลบข้อมูลผู้ลงทะเบียน ${target.firstName} ${target.lastName} (${target.participantCode}) สำเร็จเรียบร้อยแล้ว`);
   };
 
   // Open Admin Modal for Add/Edit
