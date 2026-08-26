@@ -8,9 +8,11 @@ export interface Attendee {
   email: string;
   password?: string;
   isVerified?: boolean;
+  prefix?: string; // คำนำหน้าชื่อ (นาย / นาง / นางสาว / ดร. ฯลฯ)
   firstName: string;
   lastName: string;
   phone: string;
+  position?: string; // ตำแหน่ง (ครู / นักเรียน / ผู้อำนวยการ / บุคลากร ฯลฯ)
   status: AttendeeStatus;
   organization: string; // ชื่อสถานศึกษา (โรงเรียน)
   district: string;

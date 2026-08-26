@@ -394,7 +394,16 @@ export default function App() {
   }
 
   if (currentView === 'admin-scanner') {
-    return <AdminScannerPage onBackToHome={handleBackToHome} />;
+    return (
+      <AdminScannerPage
+        onBackToHome={handleBackToHome}
+        attendees={attendees}
+        onAddAttendee={(newAtt) => {
+          setAttendees((prev) => [newAtt, ...prev]);
+          addAuditLog('เพิ่มผู้เข้าร่วม (Admin)', `เพิ่ม ${newAtt.participantCode} (${newAtt.prefix || ''}${newAtt.firstName} ${newAtt.lastName}) ตำแหน่ง: ${newAtt.position || '-'}`);
+        }}
+      />
+    );
   }
 
   return (
