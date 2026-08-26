@@ -38,6 +38,9 @@ import {
 } from './lib/firebase';
 
 import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
+import { WelcomeEntranceModal } from './components/WelcomeEntranceModal';
+import { GetQrCodePage } from './components/GetQrCodePage';
+import { AdminScannerPage } from './components/AdminScannerPage';
 
 const DEFAULT_SYSTEM_ADMINS: AdminUser[] = [
   {
@@ -155,6 +158,59 @@ export default function App() {
     const saved = localStorage.getItem('pcshs_current_admin');
     return saved ? JSON.parse(saved) : null;
   });
+
+  // Current Page View ('home' | 'get-qr' | 'admin-scanner')
+  const [currentView, setCurrentView] = useState<'home' | 'get-qr' | 'admin-scanner'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page');
+      if (page === 'get-qr') return 'get-qr';
+      if (page === 'admin-scanner') return 'admin-scanner';
+    }
+    return 'home';
+  });
+
+  // Entrance Popup Modal State (Shows automatically when landing on website home)
+  const [isEntranceModalOpen, setIsEntranceModalOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page');
+      return !page || page === 'home';
+    }
+    return true;
+  });
+
+  // Browser Navigation History Listener
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page');
+      if (page === 'get-qr') {
+        setCurrentView('get-qr');
+      } else if (page === 'admin-scanner') {
+        setCurrentView('admin-scanner');
+      } else {
+        setCurrentView('home');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleOpenGetQrCode = () => {
+    const targetUrl = `${window.location.origin}${window.location.pathname}?page=get-qr`;
+    window.open(targetUrl, '_blank');
+  };
+
+  const handleOpenAdminScanner = () => {
+    const targetUrl = `${window.location.origin}${window.location.pathname}?page=admin-scanner`;
+    window.open(targetUrl, '_blank');
+  };
+
+  const handleBackToHome = () => {
+    setCurrentView('home');
+    window.history.pushState({}, '', window.location.pathname);
+  };
 
   // Modal Controls State
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
@@ -333,6 +389,14 @@ export default function App() {
     setIsProfileOpen(false);
   };
 
+  if (currentView === 'get-qr') {
+    return <GetQrCodePage onBackToHome={handleBackToHome} />;
+  }
+
+  if (currentView === 'admin-scanner') {
+    return <AdminScannerPage onBackToHome={handleBackToHome} />;
+  }
+
   return (
     <div className="min-h-screen relative font-['Prompt',sans-serif] bg-slate-50 text-slate-900 flex flex-col justify-between overflow-x-clip">
       {/* Click Burst Particles & Ripples Effect */}
@@ -356,6 +420,7 @@ export default function App() {
           onOpenProfile={() => setIsProfileOpen(true)}
           onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
           onLogout={handleLogout}
+          onOpenEntranceModal={() => setIsEntranceModalOpen(true)}
         />
 
         {/* Hero Full-width Banner with Locked Countdown */}
@@ -472,6 +537,14 @@ export default function App() {
           addAuditLog={addAuditLog}
         />
       )}
+
+      {/* Entrance Welcome Modal (White popup with 3 main action buttons) */}
+      <WelcomeEntranceModal
+        isOpen={isEntranceModalOpen}
+        onClose={() => setIsEntranceModalOpen(false)}
+        onOpenGetQrCode={handleOpenGetQrCode}
+        onOpenAdminScanner={handleOpenAdminScanner}
+      />
     </div>
   );
 }

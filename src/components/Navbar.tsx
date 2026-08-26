@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminUser, Attendee } from '../types';
-import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, MapPin } from 'lucide-react';
+import { Calendar, HelpCircle, LogIn, LogOut, Map, Menu, Shield, UserCheck, X, Trophy, MapPin, QrCode } from 'lucide-react';
 
 interface NavbarProps {
   currentAttendee: Attendee | null;
@@ -13,6 +13,7 @@ interface NavbarProps {
   onLogout: () => void;
   onRegisterClick?: () => void;
   onOpenOrgModal?: () => void;
+  onOpenEntranceModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenProfile,
   onOpenAdminDashboard,
   onLogout,
+  onOpenEntranceModal,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -101,6 +103,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* GROUP 3: AUTH & ACTIONS (SINGLE LINE ONLY) */}
           <div className="hidden sm:flex items-center gap-2 lg:gap-2.5 whitespace-nowrap shrink-0">
+            {onOpenEntranceModal && (
+              <button
+                type="button"
+                onClick={onOpenEntranceModal}
+                className="flex items-center gap-1.5 text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/90 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
+                title="เปิดเมนูทางเข้า (รับ QR Code / สแกนสำหรับแอดมิน)"
+              >
+                <QrCode className="w-4 h-4 text-orange-600 shrink-0" />
+                <span className="whitespace-nowrap">เมนูทางเข้า</span>
+              </button>
+            )}
+
             {currentAdmin ? (
               <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
                 <button
@@ -193,6 +207,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <div className="pt-4 border-t border-slate-200 flex flex-col gap-2">
+            {onOpenEntranceModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenEntranceModal();
+                }}
+                className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-98 cursor-pointer whitespace-nowrap"
+              >
+                <QrCode className="w-4 h-4 text-white shrink-0" />
+                <span className="whitespace-nowrap">เมนูทางเข้า (รับ QR Code / สแกนสำหรับแอดมิน)</span>
+              </button>
+            )}
+
             {currentAdmin ? (
               <div className="flex flex-col gap-2">
                 <button
