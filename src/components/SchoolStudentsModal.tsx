@@ -74,17 +74,18 @@ export const cleanSchoolName = (name?: string): string => {
 
 export const isStudentOfCoordinator = (student: SchoolStudent, coordinator: Coordinator): boolean => {
   if (!student || !coordinator) return false;
-  // 1. Direct ID / Code Match
+  // 1. Direct Coordinator ID / Code Match
   if (student.coordinatorId) {
     if (student.coordinatorId === coordinator.id) return true;
     if (coordinator.code && student.coordinatorId.trim().toLowerCase() === coordinator.code.trim().toLowerCase()) return true;
+    // If student is already bound to a specific coordinator, do NOT leak to other coordinators
+    return false;
   }
-  // 2. School Name Match (robust against "รร. บ้านนาแขม จ.เลย" vs "บ้านนาแขม")
+  // 2. Legacy fallback only if student has NO coordinatorId at all
   const stuSchool = cleanSchoolName(student.school);
   const coordSchool = cleanSchoolName(coordinator.school);
   if (stuSchool && coordSchool) {
-    if (stuSchool === coordSchool) return true;
-    if (coordSchool.includes(stuSchool) || stuSchool.includes(coordSchool)) return true;
+    return stuSchool === coordSchool;
   }
   return false;
 };
