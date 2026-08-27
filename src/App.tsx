@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityItem, AdminUser, Attendee, AuditLog, ScheduleItem } from './types';
+import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration, ScheduleItem, SchoolStudent } from './types';
 import {
   FAQ_LIST,
   SCHEDULE_LIST,
@@ -9,6 +9,7 @@ import { Science3DBackground } from './components/Science3DBackground';
 import { ClickEffectCanvas } from './components/ClickEffectCanvas';
 import { Navbar } from './components/Navbar';
 import { Banner } from './components/Banner';
+import { PublicDashboardSection } from './components/PublicDashboardSection';
 import { ActivityLocationsTable } from './components/ActivityLocationsTable';
 import { VerificationStepsSection } from './components/VerificationStepsSection';
 import { ActivitiesSection } from './components/ActivitiesSection';
@@ -35,6 +36,9 @@ import {
   subscribeAuditLogs,
   saveAuditLogToFirestore,
   subscribeSchedules,
+  subscribeCoordinators,
+  subscribeSchoolStudents,
+  subscribeNewRegistrations,
 } from './lib/firebase';
 
 import { OrgRegistrationNoticeModal } from './components/OrgRegistrationNoticeModal';
@@ -108,6 +112,10 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [coordinators, setCoordinators] = useState<Coordinator[]>([]);
+  const [schoolStudents, setSchoolStudents] = useState<SchoolStudent[]>([]);
+  const [newUsers, setNewUsers] = useState<NewUserRegistration[]>([]);
+
   // Subscribe to real-time Firebase Firestore database
   useEffect(() => {
     const unsubAttendees = subscribeAttendees((firestoreData) => {
@@ -138,12 +146,27 @@ export default function App() {
       }
     });
 
+    const unsubCoordinators = subscribeCoordinators((data) => {
+      setCoordinators(data || []);
+    });
+
+    const unsubSchoolStudents = subscribeSchoolStudents((data) => {
+      setSchoolStudents(data || []);
+    });
+
+    const unsubNewUsers = subscribeNewRegistrations((data) => {
+      setNewUsers(data || []);
+    });
+
     return () => {
       unsubAttendees();
       unsubAdmins();
       unsubActivities();
       unsubAuditLogs();
       unsubSchedules();
+      unsubCoordinators();
+      unsubSchoolStudents();
+      unsubNewUsers();
     };
   }, []);
 
@@ -197,18 +220,23 @@ export default function App() {
   }, []);
 
   const handleOpenGetQrCode = () => {
-    const targetUrl = `${window.location.origin}${window.location.pathname}?page=get-qr`;
-    window.open(targetUrl, '_blank');
+    setIsEntranceModalOpen(false);
+    setCurrentView('get-qr');
+    window.history.pushState({}, '', `${window.location.pathname}?page=get-qr`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenAdminScanner = () => {
-    const targetUrl = `${window.location.origin}${window.location.pathname}?page=admin-scanner`;
-    window.open(targetUrl, '_blank');
+    setIsEntranceModalOpen(false);
+    setCurrentView('admin-scanner');
+    window.history.pushState({}, '', `${window.location.pathname}?page=admin-scanner`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleBackToHome = () => {
     setCurrentView('home');
     window.history.pushState({}, '', window.location.pathname);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Modal Controls State
@@ -389,7 +417,20 @@ export default function App() {
   };
 
   if (currentView === 'get-qr') {
-    return <GetQrCodePage onBackToHome={handleBackToHome} />;
+    return (
+      <GetQrCodePage
+        onBackToHome={handleBackToHome}
+        onOpenRegister={() => {
+          handleBackToHome();
+          setIsRegisterOpen(true);
+        }}
+        onSelectAttendeeForProfile={(att) => {
+          setCurrentAttendee(att);
+          handleBackToHome();
+          setIsProfileOpen(true);
+        }}
+      />
+    );
   }
 
   if (currentView === 'admin-scanner') {
@@ -397,6 +438,13 @@ export default function App() {
       <AdminScannerPage
         onBackToHome={handleBackToHome}
         attendees={attendees}
+        currentAdmin={currentAdmin}
+        admins={admins}
+        onAdminLoginSuccess={(adm) => {
+          setCurrentAdmin(adm);
+          addAuditLog('เข้าสู่ระบบ Admin', `แอดมิน ${adm.username} เข้าสู่ระบบจัดการข้อมูล`);
+        }}
+        onLogout={handleLogout}
         onAddAttendee={(newAtt) => {
           setAttendees((prev) => [newAtt, ...prev]);
           addAuditLog('เพิ่มผู้เข้าร่วม (Admin)', `เพิ่ม ${newAtt.participantCode} (${newAtt.prefix || ''}${newAtt.firstName} ${newAtt.lastName}) ตำแหน่ง: ${newAtt.position || '-'}`);
@@ -433,6 +481,15 @@ export default function App() {
 
         {/* Hero Full-width Banner with Locked Countdown */}
         <Banner />
+
+        {/* Public Attendance Dashboard Section (สรุปยอดผู้เข้าร่วมงานทั้ง 3 กลุ่ม & กราฟวงกลม) */}
+        <PublicDashboardSection
+          attendees={attendees}
+          coordinators={coordinators}
+          schoolStudents={schoolStudents}
+          newUsers={newUsers}
+          onOpenGetQrCode={handleOpenGetQrCode}
+        />
 
         {/* Activity Locations Summary Table (from official PDF) */}
         <ActivityLocationsTable />

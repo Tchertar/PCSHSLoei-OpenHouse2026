@@ -26,14 +26,18 @@ import {
   RefreshCw,
   Eye,
   ShieldCheck,
+  Shield,
   Filter,
   Building2,
   Users,
   Edit2,
+  Lock,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
-import { Attendee, AttendeeStatus } from '../types';
+import { AdminUser, Attendee, AttendeeStatus } from '../types';
 import {
   saveAttendeeToFirestore,
   saveAllAttendeesToFirestore,
@@ -50,6 +54,10 @@ interface AdminScannerPageProps {
   onBackToHome: () => void;
   attendees?: Attendee[];
   onAddAttendee?: (newAttendee: Attendee) => void;
+  currentAdmin?: AdminUser | null;
+  admins?: AdminUser[];
+  onAdminLoginSuccess?: (admin: AdminUser) => void;
+  onLogout?: () => void;
 }
 
 const PREFIX_OPTIONS = [
@@ -81,7 +89,109 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   onBackToHome,
   attendees: initialAttendees = [],
   onAddAttendee,
+  currentAdmin: propAdmin = null,
+  admins = [],
+  onAdminLoginSuccess,
+  onLogout,
 }) => {
+  // Admin Authentication State
+  const [localAdmin, setLocalAdmin] = useState<AdminUser | null>(() => {
+    if (propAdmin) return propAdmin;
+    try {
+      const saved = localStorage.getItem('pcshs_current_admin');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Sync propAdmin if changed
+  useEffect(() => {
+    if (propAdmin) {
+      setLocalAdmin(propAdmin);
+    }
+  }, [propAdmin]);
+
+  const activeAdmin = propAdmin || localAdmin;
+
+  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminLoginError('');
+
+    const u = adminUsername.trim().toLowerCase();
+    const p = adminPassword.trim();
+
+    if (!u || !p) {
+      setAdminLoginError('กรุณากรอกชื่อผู้ใช้และรหัสผ่านแอดมิน');
+      return;
+    }
+
+    // Default System Admins fallback
+    const systemAdmins: AdminUser[] = admins.length > 0 ? admins : [
+      {
+        id: 'super-adm',
+        username: 'superadmin',
+        name: 'ผู้อำนวยการ / ผู้ดูแลระบบสูงสุด (Super Admin)',
+        email: 'superadmin@pcshsloei.ac.th',
+        role: 'super_admin',
+        password: 'admin123',
+        createdAt: '2026-07-01',
+      },
+      {
+        id: 'adm-01',
+        username: 'admin01',
+        name: 'ครูสมชาย วิชาการ (Admin 01)',
+        email: 'admin01@pcshsloei.ac.th',
+        role: 'admin',
+        password: '12345678',
+        createdAt: '2026-07-02',
+      },
+      {
+        id: 'adm-02',
+        username: 'admin',
+        name: 'ผู้ดูแลระบบทั่วไป (Admin)',
+        email: 'admin@pcshsloei.ac.th',
+        role: 'admin',
+        password: 'admin',
+        createdAt: '2026-07-02',
+      }
+    ];
+
+    const foundAdmin = systemAdmins.find(
+      (a) =>
+        (a.username.toLowerCase() === u || a.email.toLowerCase() === u) &&
+        (a.password === p || (!a.password && (p === 'admin123' || p === '12345678' || p === 'admin')))
+    );
+
+    if (foundAdmin) {
+      setLocalAdmin(foundAdmin);
+      try {
+        localStorage.setItem('pcshs_current_admin', JSON.stringify(foundAdmin));
+      } catch {}
+      if (onAdminLoginSuccess) {
+        onAdminLoginSuccess(foundAdmin);
+      }
+      setAdminLoginError('');
+    } else {
+      setAdminLoginError('ชื่อผู้ใช้หรือรหัสผ่านแอดมินไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    setLocalAdmin(null);
+    try {
+      localStorage.removeItem('pcshs_current_admin');
+    } catch {}
+    if (onLogout) {
+      onLogout();
+    }
+  };
+
   const [activeGroupTab, setActiveGroupTab] = useState<'group1' | 'group2' | 'group3'>('group1');
   const [attendeesList, setAttendeesList] = useState<Attendee[]>(initialAttendees);
   const [searchQuery, setSearchQuery] = useState('');
@@ -805,23 +915,161 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  // IF NOT AUTHENTICATED AS ADMIN -> SHOW ADMIN LOGIN LOCK SCREEN
+  if (!activeAdmin) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 font-['Prompt',sans-serif] flex flex-col justify-between relative overflow-hidden">
+        {/* Background glow & mesh */}
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-10 right-10 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        {/* Top Minimal Bar */}
+        <header className="p-4 sm:p-6 flex items-center justify-between relative z-10">
+          <button
+            type="button"
+            onClick={onBackToHome}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 rounded-xl text-xs sm:text-sm font-bold border border-slate-700 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>กลับสู่หน้าหลักเว็บไซต์</span>
+          </button>
+          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+            <Shield className="w-4 h-4 text-orange-400" />
+            <span>Admin Portal Security Gate</span>
+          </div>
+        </header>
+
+        {/* Center Login Box */}
+        <main className="flex-1 flex items-center justify-center p-4 relative z-10">
+          <div className="w-full max-w-md bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md">
+            
+            {/* Header Emblem */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-orange-500/20 border border-orange-400/30 flex items-center justify-center mx-auto mb-3 shadow-inner text-orange-400">
+                <Lock className="w-8 h-8" />
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 bg-orange-500/20 text-orange-300 text-xs font-bold rounded-full mb-2 border border-orange-500/30">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>เฉพาะผู้ดูแลระบบและแอดมิน</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-white">
+                เข้าสู่ระบบจัดการข้อมูล
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">
+                PCSHS Loei Open House 2026 Admin Portal
+              </p>
+            </div>
+
+            {/* Error Notice */}
+            {adminLoginError && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/40 rounded-xl text-red-300 text-xs font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{adminLoginError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  ชื่อผู้ใช้แอดมิน (Username / Email)
+                </label>
+                <div className="relative flex items-center">
+                  <User className="w-4 h-4 absolute left-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    placeholder="เช่น superadmin, admin01..."
+                    className="w-full pl-10 pr-4 py-3 bg-slate-900/90 border border-slate-700 focus:border-orange-500 rounded-xl text-white text-sm outline-none transition-all placeholder:text-slate-500"
+                    autoFocus
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  รหัสผ่านแอดมิน (Password)
+                </label>
+                <div className="relative flex items-center">
+                  <Lock className="w-4 h-4 absolute left-3.5 text-slate-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-12 py-3 bg-slate-900/90 border border-slate-700 focus:border-orange-500 rounded-xl text-white text-sm outline-none transition-all placeholder:text-slate-500"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 text-slate-400 hover:text-slate-200 text-xs font-bold cursor-pointer"
+                  >
+                    {showPassword ? 'ซ่อน' : 'แสดง'}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-sm rounded-xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 transform hover:-translate-y-0.5"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>ยืนยันเข้าสู่ระบบ Admin</span>
+              </button>
+            </form>
+
+            <div className="mt-6 pt-4 border-t border-slate-700/60 text-center">
+              <button
+                type="button"
+                onClick={onBackToHome}
+                className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                ไม่ใช่แอดมิน? คลิกเพื่อกลับสู่หน้าแรก
+              </button>
+            </div>
+
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="p-4 text-center text-[11px] text-slate-500 relative z-10">
+          โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (PCSHS Loei) • ระบบจัดการข้อมูลหลังบ้าน
+        </footer>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-['Prompt',sans-serif] flex flex-col justify-between">
       {/* Top Sticky Header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onBackToHome}
-            className="flex items-center gap-2 px-3.5 py-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="hidden sm:inline">กลับสู่หน้าหลัก</span>
-            <span className="sm:hidden">กลับ</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onBackToHome}
+              className="flex items-center gap-2 px-3.5 py-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">กลับสู่หน้าหลัก</span>
+              <span className="sm:hidden">กลับ</span>
+            </button>
+
+            {/* Logged in Admin Badge */}
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold rounded-xl">
+              <Shield className="w-3.5 h-3.5 text-amber-600" />
+              <span>แอดมิน: {activeAdmin.name || activeAdmin.username}</span>
+              <span className="px-1.5 py-0.2 bg-amber-200 text-amber-800 text-[10px] rounded">
+                {activeAdmin.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+              </span>
+            </div>
+          </div>
 
           {/* Group Switcher Tabs in Header */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80 overflow-x-auto max-w-[calc(100vw-140px)] sm:max-w-none">
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80 overflow-x-auto max-w-[calc(100vw-220px)] sm:max-w-none">
             <button
               type="button"
               id="tab-group-1-attendees"
@@ -868,14 +1116,25 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onBackToHome}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
-            title="หน้าแรก"
-          >
-            <Home className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleAdminLogout}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              title="ออกจากระบบ Admin"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">ออกจากระบบ</span>
+            </button>
+            <button
+              type="button"
+              onClick={onBackToHome}
+              className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+              title="หน้าแรก"
+            >
+              <Home className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </header>
 
