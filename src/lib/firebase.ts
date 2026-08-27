@@ -7,6 +7,7 @@ import {
   deleteDoc, 
   onSnapshot, 
   query,
+  getDocs,
   getDocFromServer
 } from 'firebase/firestore';
 import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
@@ -22,6 +23,33 @@ const ACTIVITIES_COLLECTION = 'activities';
 const AUDIT_LOGS_COLLECTION = 'audit_logs';
 const MAP_BUILDINGS_COLLECTION = 'map_buildings';
 const SCHEDULES_COLLECTION = 'schedules';
+
+// One-time automatic purge of all legacy participants from Firestore and LocalStorage
+if (typeof window !== 'undefined') {
+  try {
+    const isPurged = localStorage.getItem('pcshs_attendees_purged_all_v4');
+    if (!isPurged) {
+      localStorage.removeItem('pcshs_attendees');
+      localStorage.removeItem('pcshs_locally_saved_attendees');
+      localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify([]));
+      localStorage.setItem('pcshs_attendees_purged_all_v4', 'true');
+      
+      // Immediately clear all existing remote documents from Firestore collection
+      setTimeout(async () => {
+        try {
+          const q = query(collection(db, ATTENDEES_COLLECTION));
+          const snapshot = await getDocs(q);
+          const deletePromises = snapshot.docs.map((docSnap) =>
+            deleteDoc(doc(db, ATTENDEES_COLLECTION, docSnap.id)).catch(() => {})
+          );
+          await Promise.all(deletePromises);
+        } catch (e) {
+          console.warn('Auto purge Firestore attendees error:', e);
+        }
+      }, 100);
+    }
+  } catch {}
+}
 
 // --- ATTENDEES ---
 
@@ -293,6 +321,24 @@ export const deleteAttendeeFromFirestore = async (id: string) => {
     await deleteDoc(doc(db, ATTENDEES_COLLECTION, id));
   } catch (err) {
     console.warn('Note: Could not delete doc from remote Firestore, marked locally deleted:', err);
+  }
+};
+
+export const clearAllAttendeesFromFirestore = async () => {
+  try {
+    localStorage.removeItem('pcshs_attendees');
+    localStorage.removeItem('pcshs_locally_saved_attendees');
+    localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify([]));
+
+    // Delete remote documents
+    const q = query(collection(db, ATTENDEES_COLLECTION));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map((docSnap) =>
+      deleteDoc(doc(db, ATTENDEES_COLLECTION, docSnap.id)).catch(() => {})
+    );
+    await Promise.all(deletePromises);
+  } catch (err) {
+    console.error('Error clearing all attendees:', err);
   }
 };
 

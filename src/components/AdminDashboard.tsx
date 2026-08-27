@@ -5,6 +5,7 @@ import {
   saveAttendeeToFirestore,
   saveAllAttendeesToFirestore,
   deleteAttendeeFromFirestore,
+  clearAllAttendeesFromFirestore,
   saveAdminToFirestore,
   deleteAdminFromFirestore,
   saveActivityToFirestore,
@@ -89,7 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   auditLogs,
   addAuditLog,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'attendees' | 'activities' | 'scheduleEditor' | 'admins' | 'logs' | 'mapEditor'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'activities' | 'scheduleEditor' | 'admins' | 'logs' | 'mapEditor'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Schedule Editor State
@@ -254,6 +255,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [actualStudentsCount, setActualStudentsCount] = useState<number>(0);
   const [actualCheckinNotes, setActualCheckinNotes] = useState<string>('');
   const [isSavingCheckIn, setIsSavingCheckIn] = useState(false);
+  const [isPurgingAttendees, setIsPurgingAttendees] = useState(false);
+
+  const handlePurgeAllAttendees = async () => {
+    const confirmText = prompt(
+      '⚠️ คำเตือน: คุณกำลังจะลบข้อมูลผู้เข้าร่วม/ผู้ลงทะเบียนทั้งหมดออกจากฐานข้อมูล Firebase อย่างถาวร\n\nพิมพ์คำว่า "DELETE ALL" เพื่อยืนยันการลบ:'
+    );
+    if (confirmText !== 'DELETE ALL') {
+      if (confirmText !== null) {
+        alert('คำยืนยันไม่ถูกต้อง การลบถูกยกเลิก');
+      }
+      return;
+    }
+
+    try {
+      setIsPurgingAttendees(true);
+      await clearAllAttendeesFromFirestore();
+      addAuditLog(
+        'PURGE_ALL_ATTENDEES_FIRESTORE',
+        `Super Admin ${currentAdmin.name} ลบข้อมูลผู้เข้าร่วมทั้งหมดออกจากฐานข้อมูล Firebase`,
+        'success'
+      );
+      alert('ลบข้อมูลผู้ลงทะเบียนทั้งหมดออกจากฐานข้อมูล Firebase สำเร็จเรียบร้อยแล้ว');
+    } catch (err) {
+      console.error('Error purging attendees from Firestore:', err);
+      alert('เกิดข้อผิดพลาดในการลบข้อมูลจาก Firebase: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsPurgingAttendees(false);
+    }
+  };
 
   // Calculate Summary Statistics
   const totalRegistrations = attendees.length;
@@ -1598,18 +1628,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('attendees')}
-            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'attendees'
-                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>รายชื่อผู้ลงทะเบียน ({totalRegistrations})</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('activities')}
             className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'activities'
@@ -1735,27 +1753,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <MapPin className="w-5 h-5 text-orange-500" />
                     <span>เปรียบเทียบสัดส่วนผู้เข้าร่วมตามจังหวัด</span>
                   </h4>
-                  <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={provincePieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {provincePieData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                  <div className="w-full h-64 flex items-center justify-center">
+                    {provincePieData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={provincePieData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          >
+                            {provincePieData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-center py-12 text-slate-400 space-y-2">
+                        <MapPin className="w-8 h-8 mx-auto text-slate-300 stroke-1" />
+                        <p className="text-xs font-medium">ยังไม่มีข้อมูลผู้เข้าร่วมในระบบ</p>
+                        <p className="text-[11px] text-slate-400">เมื่อเพิ่มหรือลงทะเบียนผู้เข้าร่วม ข้อมูลสัดส่วนจังหวัดจะแสดงที่นี่</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1765,30 +1791,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Users className="w-5 h-5 text-blue-500" />
                     <span>เปรียบเทียบประเภทกลุ่มผู้เข้าร่วมงาน</span>
                   </h4>
-                  <div className="w-full h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={statusPieData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#82ca9d"
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                        >
-                          {statusPieData.map((_, index) => (
-                            <Cell key={`cell-status-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
-                        <Legend />
-                      </PieChart>
-                    </ResponsiveContainer>
+                  <div className="w-full h-64 flex items-center justify-center">
+                    {statusPieData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={statusPieData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            outerRadius={80}
+                            fill="#82ca9d"
+                            dataKey="value"
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          >
+                            {statusPieData.map((_, index) => (
+                              <Cell key={`cell-status-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderRadius: '8px', color: '#0f172a' }} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-center py-12 text-slate-400 space-y-2">
+                        <Users className="w-8 h-8 mx-auto text-slate-300 stroke-1" />
+                        <p className="text-xs font-medium">ยังไม่มีข้อมูลผู้เข้าร่วมในระบบ</p>
+                        <p className="text-[11px] text-slate-400">เมื่อเพิ่มหรือลงทะเบียนผู้เข้าร่วม ข้อมูลประเภทกลุ่มจะแสดงที่นี่</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
+              {/* Super Admin Database Management Card */}
+              {currentAdmin.role === 'super_admin' && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 border border-red-200 flex items-center justify-center shrink-0">
+                      <Database className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                        <span>จัดการฐานข้อมูลผู้เข้าร่วม Firebase Firestore</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-normal">
+                          {totalRegistrations} รายการในระบบ
+                        </span>
+                      </h5>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                        คุณสามารถลบข้อมูลผู้เข้าร่วมทั้งหมดออกจากฐานข้อมูลเพื่อเริ่มนับ 0 ใหม่สำหรับการลงทะเบียนจริง
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handlePurgeAllAttendees}
+                    disabled={isPurgingAttendees}
+                    className="w-full sm:w-auto px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-xl border border-red-300 cursor-pointer transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    <Trash2 className={`w-3.5 h-3.5 ${isPurgingAttendees ? 'animate-spin' : ''}`} />
+                    <span>{isPurgingAttendees ? 'กำลังลบข้อมูลใน Firebase...' : 'ลบข้อมูลผู้เข้าร่วมทั้งหมดออกจากฐานข้อมูล'}</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1856,237 +1921,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onScanSuccess={(decodedText) => handleCheckIn(decodedText)}
                 scannerMessage={scannerMessage}
               />
-
-
-            </div>
-          )}
-
-          {/* TAB 3: ATTENDEES TABLE */}
-          {activeTab === 'attendees' && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="relative w-full sm:w-80">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="ค้นหาชื่อ, รหัส, เบอร์โทร, สถาบัน..."
-                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 text-sm focus:outline-none focus:border-orange-500"
-                  />
-                </div>
-
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={handleDownloadAttendeeTemplate}
-                    title="ดาวน์โหลดไฟล์ Excel ตัวอย่างสำหรับกรอกข้อมูลผู้ลงทะเบียนหลายคน (.XLSX)"
-                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-blue-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-blue-400/30"
-                  >
-                    <Download className="w-4 h-4 text-blue-200" />
-                    <span>ไฟล์ Excel ตัวอย่าง (.XLSX)</span>
-                  </button>
-
-                  <button
-                    onClick={handleOpenAddAttendee}
-                    title="เพิ่มข้อมูลผู้ลงทะเบียนรายบุคคลโดยแอดมิน"
-                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-orange-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-1.5 border border-orange-400/30"
-                  >
-                    <Plus className="w-4 h-4 text-amber-200" />
-                    <span>เพิ่มผู้ลงทะเบียน</span>
-                  </button>
-
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleImportXLSX}
-                    accept=".xlsx, .xls, .csv"
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    title="นำเข้าข้อมูลผู้ลงทะเบียนจากไฟล์ Excel (.xlsx / .csv)"
-                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold text-xs sm:text-sm rounded-xl shadow hover:shadow-purple-500/20 cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2 border border-purple-300/30"
-                  >
-                    <FileUp className="w-4 h-4 text-purple-100" />
-                    <span>นำเข้าข้อมูล (.XLSX)</span>
-                  </button>
-
-                  <button
-                    onClick={handleExportXLSX}
-                    className="w-full sm:w-auto px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105 flex items-center justify-center gap-2"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    <span>Export ข้อมูลผู้เข้าร่วม (.XLSX)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Batch Excel Import Quick Tip Banner */}
-              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/80 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <FileSpreadsheet className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-slate-900 text-xs sm:text-sm">
-                      ต้องการลงทะเบียนหรือเพิ่มข้อมูลสถานศึกษาครั้งละหลายแห่ง?
-                    </h5>
-                    <p className="text-slate-600 mt-0.5 leading-relaxed">
-                      กดปุ่ม <strong>"ไฟล์ Excel ตัวอย่าง (.XLSX)"</strong> เพื่อดาวน์โหลดเทมเพลตมาตรฐาน 12 คอลัมน์ กรอกรายชื่อสถานศึกษา แล้วกด <strong>"นำเข้าข้อมูล (.XLSX)"</strong> ระบบจะสร้างรหัสประจำตัวต่อเนื่อง (PCSHS-0001, PCSHS-0002, ...) และ QR Code ให้อัตโนมัติทันที
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadAttendeeTemplate}
-                  className="shrink-0 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-xs cursor-pointer transition-colors flex items-center gap-1.5 text-xs w-full sm:w-auto justify-center"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>โหลดไฟล์ตัวอย่าง (12 คอลัมน์)</span>
-                </button>
-              </div>
-
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <table className="w-full text-left text-xs sm:text-sm text-slate-700">
-                  <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3">รหัสประจำตัว</th>
-                      <th className="px-4 py-3">ชื่อสถานศึกษา (โรงเรียน)</th>
-                      <th className="px-4 py-3">ครูผู้ประสานงาน</th>
-                      <th className="px-4 py-3">ประเภทโรงเรียน / เขตพื้นที่</th>
-                      <th className="px-4 py-3 text-center">ยอดผู้เข้าร่วมรวม</th>
-                      <th className="px-4 py-3 text-center">แบบตอบรับ</th>
-                      <th className="px-4 py-3 text-center">สถานะเช็คอิน</th>
-                      <th className="px-4 py-3 text-right">การจัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {attendees
-                      .filter(
-                        (a) =>
-                          (a.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.lastName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.participantCode || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.organization || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.schoolName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.coordinatorName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (a.phone || '').includes(searchTerm)
-                      )
-                      .map((att) => (
-                        <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-4 py-3">
-                            <span className="font-mono font-bold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-md text-xs">
-                              {att.participantCode}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-slate-900">
-                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                              <Building className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                              <span>{att.schoolName || att.organization}</span>
-                            </div>
-                            {att.interestedActivities && (
-                              <span className="block text-[10px] text-slate-500 font-normal line-clamp-1 mt-0.5">
-                                กิจกรรม: {att.interestedActivities}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-700">
-                            <div className="font-medium text-slate-800">
-                              {att.coordinatorName || `${att.firstName} ${att.lastName}`}
-                            </div>
-                            <span className="block text-[10px] text-slate-500 font-normal">
-                              📞 {att.coordinatorPhone || att.phone}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600 text-xs">
-                            <span className="block font-medium text-slate-800">{att.schoolType || att.status}</span>
-                            <span className="text-[10px] text-slate-500">{att.serviceArea || `${att.district} ${att.province}`}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg text-xs">
-                              {att.attendeeCount} คน
-                            </span>
-                            {(att.executivesCount !== undefined || att.teachersCount !== undefined || att.studentsCount !== undefined) && (
-                              <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-500">
-                                <span>ผบ.{att.executivesCount || 0}</span>
-                                <span>•</span>
-                                <span>ครู{att.teachersCount || 0}</span>
-                                <span>•</span>
-                                <span>นร.{att.studentsCount || 0}</span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {att.acceptanceFormUrl ? (
-                              <a
-                                href={att.acceptanceFormUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold border border-blue-200 transition-colors"
-                                title="เปิดดูลิงก์แบบตอบรับเข้าร่วมงาน"
-                              >
-                                <LinkIcon className="w-3 h-3 text-blue-500" />
-                                <span>เปิดดู</span>
-                              </a>
-                            ) : (
-                              <span className="text-slate-400 text-[11px]">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {att.checkedIn ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                เช็คอินแล้ว
-                              </span>
-                            ) : (
-                              <span className="text-slate-500 font-medium text-xs bg-slate-100 px-2.5 py-1 rounded-full">
-                                ยังไม่เช็คอิน
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => setViewingAttendeeDetail(att)}
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="ดูรายละเอียดสถานศึกษาครบ 12 คอลัมน์"
-                              >
-                                <Eye className="w-3.5 h-3.5 text-slate-600" />
-                                <span>ดูข้อมูล</span>
-                              </button>
-                              <button
-                                onClick={() => handleOpenEditAttendee(att)}
-                                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold border border-amber-200 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="แก้ไขข้อมูลสถานศึกษา / ผู้ลงทะเบียน"
-                              >
-                                <Edit className="w-3.5 h-3.5 text-amber-600" />
-                                <span>แก้ไข</span>
-                              </button>
-                              <button
-                                onClick={() => handleToggleCheckIn(att.id)}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                                  att.checkedIn
-                                    ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    : 'bg-orange-500 hover:bg-orange-600 text-white shadow-xs'
-                                }`}
-                              >
-                                {att.checkedIn ? 'ยกเลิก' : 'สแกนเข้า'}
-                              </button>
-                              <button
-                                onClick={() => handleOpenDeleteAttendeeModal(att)}
-                                className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-xs font-bold border border-red-200/80 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="ลบข้อมูล (ต้องยืนยันรหัสผ่าน Super Admin)"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
             </div>
           )}
 
