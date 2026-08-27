@@ -108,7 +108,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 type="button"
                 onClick={onOpenEntranceModal}
                 className="flex items-center gap-1.5 text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200/90 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow transition-all cursor-pointer whitespace-nowrap shrink-0"
-                title="เปิดเมนูทางเข้า (รับ QR Code / สแกนสำหรับแอดมิน)"
+                title="เปิดเมนูทางเข้า (รับ QR Code / จัดการข้อมูล สำหรับแอดมิน)"
               >
                 <QrCode className="w-4 h-4 text-orange-600 shrink-0" />
                 <span className="whitespace-nowrap">เมนูทางเข้า</span>

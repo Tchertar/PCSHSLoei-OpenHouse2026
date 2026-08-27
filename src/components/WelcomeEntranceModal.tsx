@@ -94,7 +94,7 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
             </button>
           </div>
 
-          {/* BUTTON 2: สแกน QRCode สำหรับแอดมิน */}
+          {/* BUTTON 2: จัดการข้อมูล สำหรับแอดมิน */}
           <button
             type="button"
             onClick={onOpenAdminScanner}
@@ -107,7 +107,7 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm sm:text-base font-bold text-slate-900">
-                    2. สแกน QR Code สำหรับแอดมิน
+                    2. จัดการข้อมูล สำหรับแอดมิน
                   </span>
                   <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">
                     Admin
