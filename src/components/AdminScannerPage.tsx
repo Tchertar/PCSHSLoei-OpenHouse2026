@@ -43,6 +43,7 @@ import {
   formatThaiPhoneNumber,
 } from '../lib/firebase';
 import { CoordinatorsManagementTab } from './CoordinatorsManagementTab';
+import { NewUserRegistrationsTab } from './NewUserRegistrationsTab';
 
 interface AdminScannerPageProps {
   onBackToHome: () => void;
@@ -80,7 +81,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   attendees: initialAttendees = [],
   onAddAttendee,
 }) => {
-  const [activeGroupTab, setActiveGroupTab] = useState<'group1' | 'group2'>('group1');
+  const [activeGroupTab, setActiveGroupTab] = useState<'group1' | 'group2' | 'group3'>('group1');
   const [attendeesList, setAttendeesList] = useState<Attendee[]>(initialAttendees);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn' | 'duplicates'>('all');
@@ -738,19 +739,19 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
           </button>
 
           {/* Group Switcher Tabs in Header */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80 overflow-x-auto max-w-[calc(100vw-140px)] sm:max-w-none">
             <button
               type="button"
               id="tab-group-1-attendees"
               onClick={() => setActiveGroupTab('group1')}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 activeGroupTab === 'group1'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>กลุ่มที่ 1 : ลงทะเบียนล่วงหน้า</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>กลุ่ม 1 : ลงทะเบียนล่วงหน้า</span>
               <span className={`hidden md:inline-block px-1.5 py-0.2 text-[10px] rounded-md ${activeGroupTab === 'group1' ? 'bg-blue-700/80 text-blue-100' : 'bg-slate-200 text-slate-600'}`}>
                 {attendeesList.length}
               </span>
@@ -760,14 +761,28 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
               type="button"
               id="tab-group-2-coordinators"
               onClick={() => setActiveGroupTab('group2')}
-              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                 activeGroupTab === 'group2'
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              <Building2 className="w-4 h-4" />
-              <span>กลุ่มที่ 2 : ผู้ประสานงาน</span>
+              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>กลุ่ม 2 : ผู้ประสานงาน</span>
+            </button>
+
+            <button
+              type="button"
+              id="tab-group-3-new-users"
+              onClick={() => setActiveGroupTab('group3')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                activeGroupTab === 'group3'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>กลุ่ม 3 : ลงทะเบียนผู้ใช้ใหม่</span>
             </button>
           </div>
 
@@ -785,9 +800,11 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         
-        {/* If Group 2 is active, render CoordinatorsManagementTab */}
+        {/* Conditional Tab Rendering */}
         {activeGroupTab === 'group2' ? (
           <CoordinatorsManagementTab />
+        ) : activeGroupTab === 'group3' ? (
+          <NewUserRegistrationsTab />
         ) : (
           <>
             {/* Top Overview & Excel Control Card */}

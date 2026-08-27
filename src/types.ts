@@ -65,6 +65,19 @@ export interface Coordinator {
   updatedAt?: string;
 }
 
+export interface NewUserRegistration {
+  id: string;
+  code: string; // รหัส (เริ่มด้วย OH47001, OH47002, ...)
+  prefix: string; // คำนำหน้าชื่อ (นาย, นาง, นางสาว, ด.ช., ด.หญิง, อื่นๆ)
+  fullName: string; // ชื่อ-สกุล
+  phone: string; // เบอร์โทรศัพท์ (10 หลัก มี 0 นำหน้า)
+  email: string; // Email
+  checkedIn: boolean; // สถานะเป็นเช็คอินแล้วทันทีเมื่อเพิ่ม
+  checkedInAt: string; // เวลาที่เช็คอิน (เมื่อบันทึก)
+  registeredAt: string;
+  updatedAt?: string;
+}
+
 export type AdminRole = 'super_admin' | 'admin';
 
 export interface AdminUser {

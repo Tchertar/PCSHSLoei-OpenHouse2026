@@ -10,7 +10,7 @@ import {
   getDocs,
   getDocFromServer
 } from 'firebase/firestore';
-import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator } from '../types';
+import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -19,6 +19,7 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(defa
 
 const ATTENDEES_COLLECTION = 'attendees';
 const COORDINATORS_COLLECTION = 'coordinators';
+const NEW_REGISTRATIONS_COLLECTION = 'new_registrations';
 const ADMINS_COLLECTION = 'admins';
 const ACTIVITIES_COLLECTION = 'activities';
 const AUDIT_LOGS_COLLECTION = 'audit_logs';
@@ -497,6 +498,165 @@ export const updateCoordinatorCheckInStatus = async (id: string, checkedIn: bool
     await setDoc(docRef, updateData, { merge: true });
   } catch (err) {
     console.warn('Note: Could not update coordinator check-in on Firestore remote:', err);
+  }
+};
+
+// --- GROUP 3 : NEW USER REGISTRATIONS (ฐานข้อมูลกลุ่มที่ 3 : ลงทะเบียนผู้ใช้ใหม่ รหัส OH47001...) ---
+/**
+ * Calculates next sequential code starting at OH47001 (e.g. OH47001, OH47002, ...)
+ */
+export const getNextNewUserCode = (list: NewUserRegistration[]): string => {
+  let maxSeq = 47000;
+  for (const item of list) {
+    if (!item.code) continue;
+    const match = item.code.match(/OH(\d+)/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  }
+  const nextNum = maxSeq + 1;
+  return `OH${nextNum}`;
+};
+
+export const subscribeNewRegistrations = (callback: (data: NewUserRegistration[]) => void) => {
+  const q = query(collection(db, NEW_REGISTRATIONS_COLLECTION));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: NewUserRegistration[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as NewUserRegistration);
+      });
+      try {
+        localStorage.setItem('pcshs_new_registrations', JSON.stringify(list));
+      } catch {}
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore new_registrations subscription note:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_new_registrations');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
+};
+
+export const saveNewRegistrationToFirestore = async (item: NewUserRegistration) => {
+  const codeStr = (item.code || '').trim();
+  const docId =
+    item.id ||
+    (codeStr
+      ? `new_${codeStr.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')}`
+      : `new_${Date.now()}`);
+
+  const formattedPhone = formatThaiPhoneNumber(item.phone);
+  const now = new Date().toISOString();
+
+  const dataToSave: NewUserRegistration = {
+    ...item,
+    id: docId,
+    code: codeStr || docId,
+    phone: formattedPhone,
+    checkedIn: true, // สถานะเป็นเช็คอินแล้วทันทีเมื่อเพิ่ม
+    checkedInAt: item.checkedInAt || now,
+    registeredAt: item.registeredAt || now,
+    updatedAt: now,
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_new_registrations');
+    let list: NewUserRegistration[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((c) => c.id === docId);
+    if (idx >= 0) list[idx] = dataToSave;
+    else list.push(dataToSave);
+    localStorage.setItem('pcshs_new_registrations', JSON.stringify(list));
+  } catch {}
+
+  try {
+    const docRef = doc(db, NEW_REGISTRATIONS_COLLECTION, docId);
+    await setDoc(docRef, dataToSave, { merge: true });
+    return docId;
+  } catch (err) {
+    console.warn('Note: Could not save new registration to Firestore remote, saved locally:', err);
+    return docId;
+  }
+};
+
+export const saveAllNewRegistrationsToFirestore = async (
+  list: NewUserRegistration[],
+  replaceExisting: boolean = false
+) => {
+  try {
+    if (replaceExisting) {
+      await clearAllNewRegistrationsFromFirestore();
+    }
+    for (const item of list) {
+      await saveNewRegistrationToFirestore(item);
+    }
+  } catch (err) {
+    console.error('Error bulk saving new registrations to Firestore:', err);
+  }
+};
+
+export const deleteNewRegistrationFromFirestore = async (id: string) => {
+  try {
+    const raw = localStorage.getItem('pcshs_new_registrations');
+    if (raw) {
+      const list: NewUserRegistration[] = JSON.parse(raw);
+      localStorage.setItem('pcshs_new_registrations', JSON.stringify(list.filter((c) => c.id !== id)));
+    }
+  } catch {}
+
+  try {
+    await deleteDoc(doc(db, NEW_REGISTRATIONS_COLLECTION, id));
+  } catch (err) {
+    console.warn('Note: Could not delete new registration from remote Firestore:', err);
+  }
+};
+
+export const clearAllNewRegistrationsFromFirestore = async () => {
+  try {
+    localStorage.removeItem('pcshs_new_registrations');
+    const q = query(collection(db, NEW_REGISTRATIONS_COLLECTION));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map((docSnap) =>
+      deleteDoc(doc(db, NEW_REGISTRATIONS_COLLECTION, docSnap.id)).catch(() => {})
+    );
+    await Promise.all(deletePromises);
+  } catch (err) {
+    console.warn('Error clearing new registrations from Firestore:', err);
+  }
+};
+
+export const updateNewRegistrationCheckInStatus = async (id: string, checkedIn: boolean) => {
+  const checkedInAt = checkedIn ? new Date().toISOString() : undefined;
+  const updateData = {
+    checkedIn,
+    checkedInAt: checkedInAt || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_new_registrations');
+    if (raw) {
+      const list: NewUserRegistration[] = JSON.parse(raw);
+      const idx = list.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...updateData } as NewUserRegistration;
+        localStorage.setItem('pcshs_new_registrations', JSON.stringify(list));
+      }
+    }
+  } catch {}
+
+  try {
+    const docRef = doc(db, NEW_REGISTRATIONS_COLLECTION, id);
+    await setDoc(docRef, updateData, { merge: true });
+  } catch (err) {
+    console.warn('Note: Could not update new registration check-in on Firestore remote:', err);
   }
 };
 
