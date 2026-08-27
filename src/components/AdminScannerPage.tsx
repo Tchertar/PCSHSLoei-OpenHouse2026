@@ -1,35 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
-  ScanLine,
-  ArrowLeft,
-  ShieldCheck,
-  Sparkles,
-  AlertCircle,
-  Home,
+  FileSpreadsheet,
+  Download,
+  Upload,
   UserPlus,
-  QrCode,
+  Search,
   CheckCircle2,
-  X,
-  Phone,
-  Mail,
-  User,
-  Briefcase,
-  School,
+  AlertCircle,
+  ArrowLeft,
+  Home,
+  QrCode,
   Copy,
   Check,
   Printer,
-  Download,
+  Trash2,
+  Phone,
+  Mail,
+  School,
+  Briefcase,
+  User,
+  X,
   Plus,
-  Search,
+  RefreshCw,
+  Eye,
+  ShieldCheck,
+  Filter,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
 import { Attendee, AttendeeStatus } from '../types';
 import {
   saveAttendeeToFirestore,
+  saveAllAttendeesToFirestore,
+  deleteAttendeeFromFirestore,
+  clearAllAttendeesFromFirestore,
   getNextConsecutiveParticipantCode,
   subscribeAttendees,
-  getLocallySavedAttendees,
 } from '../lib/firebase';
 
 interface AdminScannerPageProps {
@@ -54,7 +61,7 @@ const PREFIX_OPTIONS = [
 const POSITION_OPTIONS = [
   'ครู/อาจารย์',
   'นักเรียน',
-  'ผู้อำนวยการโรงเรียน / ผู้บริหารสถานศึกษา',
+  'ผู้อำนวยการโรงเรียน / ผู้บริหาร',
   'รองผู้อำนวยการโรงเรียน',
   'ครูผู้ประสานงาน',
   'บุคลากรทางการศึกษา',
@@ -69,77 +76,435 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   onAddAttendee,
 }) => {
   const [attendeesList, setAttendeesList] = useState<Attendee[]>(initialAttendees);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
+  const [isImporting, setIsImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [viewingAttendeeQr, setViewingAttendeeQr] = useState<Attendee | null>(null);
   const [createdAttendee, setCreatedAttendee] = useState<Attendee | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
-  // Form Fields State
+  // Single Add Form State
   const [prefix, setPrefix] = useState('นาย');
   const [customPrefix, setCustomPrefix] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [fullNameInput, setFullNameInput] = useState('');
   const [position, setPosition] = useState('ครู/อาจารย์');
   const [customPosition, setCustomPosition] = useState('');
+  const [schoolName, setSchoolName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [organization, setOrganization] = useState('โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย');
+  const [customCode, setCustomCode] = useState('');
   const [formError, setFormError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Search & Filter in recent attendees
-  const [searchQuery, setSearchQuery] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Subscribe to live attendees
   useEffect(() => {
     const unsub = subscribeAttendees((data) => {
-      if (data && data.length > 0) {
+      if (data) {
         setAttendeesList(data);
       }
     });
     return () => unsub();
   }, []);
 
-  // Reset Form
-  const resetForm = () => {
-    setPrefix('นาย');
-    setCustomPrefix('');
-    setFirstName('');
-    setLastName('');
-    setPosition('ครู/อาจารย์');
-    setCustomPosition('');
-    setPhone('');
-    setEmail('');
-    setOrganization('โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย');
-    setFormError('');
+  // Filter attendees
+  const filteredAttendees = attendeesList.filter((att) => {
+    // 1. Status Filter
+    if (statusFilter === 'checkedIn' && !att.checkedIn) return false;
+    if (statusFilter === 'notCheckedIn' && att.checkedIn) return false;
+
+    // 2. Search query filter
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const fullName = `${att.prefix || ''} ${att.firstName} ${att.lastName}`.toLowerCase();
+    const code = (att.participantCode || '').toLowerCase();
+    const pos = (att.position || att.status || '').toLowerCase();
+    const school = (att.schoolName || att.organization || '').toLowerCase();
+    const ph = (att.phone || '').toLowerCase();
+    const em = (att.email || '').toLowerCase();
+
+    return (
+      fullName.includes(query) ||
+      code.includes(query) ||
+      pos.includes(query) ||
+      school.includes(query) ||
+      ph.includes(query) ||
+      em.includes(query)
+    );
+  });
+
+  // Calculate Statistics
+  const totalCount = attendeesList.length;
+  const checkedInCount = attendeesList.filter((a) => a.checkedIn).length;
+  const notCheckedInCount = totalCount - checkedInCount;
+
+  // Position breakdown
+  const teachersCount = attendeesList.filter(
+    (a) =>
+      (a.position && (a.position.includes('ครู') || a.position.includes('อาจารย์'))) ||
+      a.status === 'ครู/อาจารย์'
+  ).length;
+  const studentsCount = attendeesList.filter(
+    (a) => (a.position && a.position.includes('นักเรียน')) || a.status === 'นักเรียน'
+  ).length;
+  const otherCount = totalCount - (teachersCount + studentsCount);
+
+  // 1. Download Excel Template (.xlsx)
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'รหัส',
+      'ชื่อ',
+      'ตำแหน่ง',
+      'ชื่อสถานศึกษา(ถ้ามี)',
+      'เบอร์โทรศัพท์',
+      'อีเมล',
+    ];
+
+    const sampleRows = [
+      [
+        'PCSHS-0001',
+        'นายสมชาย ใจดี',
+        'ครู/อาจารย์',
+        'โรงเรียนเลยพิทยาคม',
+        '0812345678',
+        'somchai@school.ac.th',
+      ],
+      [
+        'PCSHS-0002',
+        'นางสาววิภาดา สุขใจ',
+        'นักเรียน',
+        'โรงเรียนจุฬาภรณราชวิทยาลัย เลย',
+        '0898765432',
+        'wipada@student.ac.th',
+      ],
+      [
+        'PCSHS-0003',
+        'ดร.กิตติศักดิ์ เจริญรุ่งเรือง',
+        'ผู้อำนวยการโรงเรียน',
+        'โรงเรียนเชียงคาน',
+        '0865551234',
+        'kittisak@moe.go.th',
+      ],
+      [
+        'PCSHS-0004',
+        'นางนภาวรรณ มั่งมี',
+        'ผู้ปกครอง',
+        '-',
+        '0841112233',
+        'napawan@gmail.com',
+      ],
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 16 }, // รหัส
+      { wch: 26 }, // ชื่อ
+      { wch: 22 }, // ตำแหน่ง
+      { wch: 32 }, // ชื่อสถานศึกษา(ถ้ามี)
+      { wch: 18 }, // เบอร์โทรศัพท์
+      { wch: 28 }, // อีเมล
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ผู้ลงทะเบียนล่วงหน้า');
+    XLSX.writeFile(wb, 'เทมเพลต_ผู้ลงทะเบียนล่วงหน้า_กลุ่มที่1.xlsx');
   };
 
-  const handleOpenModal = () => {
-    resetForm();
-    setCreatedAttendee(null);
-    setIsAddModalOpen(true);
+  // 2. Export Current Attendees to Excel
+  const handleExportExcel = () => {
+    if (attendeesList.length === 0) {
+      alert('ไม่มีข้อมูลผู้ลงทะเบียนสำหรับ Export');
+      return;
+    }
+
+    const data = attendeesList.map((att, idx) => ({
+      'ลำดับ': idx + 1,
+      'รหัสประจำตัว': att.participantCode,
+      'คำนำหน้า': att.prefix || '',
+      'ชื่อ - นามสกุล': `${att.prefix ? att.prefix + ' ' : ''}${att.firstName} ${att.lastName}`.trim(),
+      'ตำแหน่ง': att.position || att.status || '-',
+      'ชื่อสถานศึกษา(ถ้ามี)': att.schoolName || att.organization || '-',
+      'เบอร์โทรศัพท์': att.phone,
+      'อีเมล': att.email,
+      'สถานะการเช็คอิน': att.checkedIn ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน',
+      'เวลาลงทะเบียน': att.registeredAt || '-',
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 8 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 32 },
+      { wch: 18 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 22 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'รายชื่อผู้ลงทะเบียน');
+    XLSX.writeFile(wb, `รายชื่อผู้ลงทะเบียนล่วงหน้า_กลุ่มที่1_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  const handleFormSubmit = async (e: React.FormEvent) => {
+  // 3. Import Excel (.xlsx, .xls, .csv)
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportNotice(null);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const firstSheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[firstSheetName];
+        const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+
+        if (!rawRows || rawRows.length === 0) {
+          setImportNotice({
+            type: 'error',
+            message: 'ไม่พบข้อมูลแถวในไฟล์ Excel ที่เลือก',
+          });
+          setIsImporting(false);
+          return;
+        }
+
+        // Calculate starting sequence number
+        let currentMaxSeq = 0;
+        attendeesList.forEach((a) => {
+          const match = (a.participantCode || '').match(/PCSHS(?:2026)?[-_]?(\d+)/i);
+          if (match && match[1]) {
+            const n = parseInt(match[1], 10);
+            if (!isNaN(n) && n > currentMaxSeq && n < 100000) currentMaxSeq = n;
+          }
+        });
+        if (currentMaxSeq === 0) currentMaxSeq = attendeesList.length;
+
+        const newAttendees: Attendee[] = [];
+        let seqCounter = currentMaxSeq;
+
+        rawRows.forEach((row, idx) => {
+          const getValue = (...keys: string[]) => {
+            for (const key of keys) {
+              const matchedKey = Object.keys(row).find(
+                (k) =>
+                  k.trim().toLowerCase() === key.trim().toLowerCase() ||
+                  k.toLowerCase().includes(key.toLowerCase())
+              );
+              if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null) {
+                return String(row[matchedKey]).trim();
+              }
+            }
+            return '';
+          };
+
+          // 1. รหัส (Code)
+          let participantCode = getValue('รหัส', 'รหัสประจำตัว', 'Code', 'participantCode');
+          if (!participantCode) {
+            seqCounter += 1;
+            participantCode = `PCSHS-${String(seqCounter).padStart(4, '0')}`;
+          }
+
+          // 2. ชื่อ (Name)
+          const rawName = getValue('ชื่อ', 'ชื่อ-สกุล', 'ชื่อ - นามสกุล', 'ชื่อผู้ลงทะเบียน', 'Name', 'FullName', 'firstName');
+          if (!rawName) return; // Skip empty row
+
+          // Parse prefix, first name, last name
+          let parsedPrefix = '';
+          let cleanFullName = rawName;
+          const knownPrefixes = [
+            'นาย',
+            'นางสาว',
+            'นาง',
+            'เด็กชาย',
+            'เด็กหญิง',
+            'ดร.',
+            'ผศ.ดร.',
+            'รศ.ดร.',
+            'ศ.ดร.',
+            'อาจารย์',
+            'ว่าที่ร้อยตรี',
+            'ว่าที่ ร.ต.',
+          ];
+          for (const kp of knownPrefixes) {
+            if (cleanFullName.startsWith(kp)) {
+              parsedPrefix = kp;
+              cleanFullName = cleanFullName.substring(kp.length).trim();
+              break;
+            }
+          }
+
+          const nameParts = cleanFullName.split(/\s+/).filter(Boolean);
+          const firstName = nameParts[0] || 'ผู้เข้าร่วม';
+          const lastName = nameParts.slice(1).join(' ') || '-';
+
+          // 3. ตำแหน่ง (Position)
+          const rawPosition = getValue('ตำแหน่ง', 'Position', 'หน้าที่', 'role') || 'ผู้เข้าร่วมงาน';
+
+          // Determine general AttendeeStatus
+          let mappedStatus: AttendeeStatus = 'บุคคลทั่วไป';
+          if (rawPosition.includes('นักเรียน')) {
+            mappedStatus = 'นักเรียน';
+          } else if (
+            rawPosition.includes('ครู') ||
+            rawPosition.includes('อาจารย์') ||
+            rawPosition.includes('ผู้อำนวยการ') ||
+            rawPosition.includes('ผู้บริหาร') ||
+            rawPosition.includes('บุคลากร')
+          ) {
+            mappedStatus = 'ครู/อาจารย์';
+          } else if (rawPosition.includes('ผู้ปกครอง')) {
+            mappedStatus = 'ผู้ปกครอง';
+          }
+
+          // 4. ชื่อสถานศึกษา(ถ้ามี) (School Name)
+          const rawSchool =
+            getValue('ชื่อสถานศึกษา(ถ้ามี)', 'ชื่อสถานศึกษา', 'สถานศึกษา', 'โรงเรียน', 'หน่วยงาน', 'สถาบัน', 'schoolName', 'organization') ||
+            'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย';
+
+          // 5. เบอร์โทรศัพท์ (Phone)
+          const rawPhone = getValue('เบอร์โทรศัพท์', 'เบอร์โทร', 'เบอร์ติดต่อ', 'Phone', 'tel', 'mobile');
+          const cleanPhone = rawPhone.replace(/[^0-9]/g, '') || '0000000000';
+
+          // 6. อีเมล (Email)
+          let rawEmail = getValue('อีเมล', 'Email', 'E-mail', 'e-mail', 'mail');
+          if (!rawEmail || !rawEmail.includes('@')) {
+            rawEmail = `${cleanPhone !== '0000000000' ? cleanPhone : `user_${idx + 1}`}@pcshs.ac.th`;
+          }
+
+          const newAtt: Attendee = {
+            id: `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            participantCode,
+            prefix: parsedPrefix,
+            firstName,
+            lastName,
+            position: rawPosition,
+            schoolName: rawSchool,
+            organization: rawSchool,
+            phone: cleanPhone,
+            email: rawEmail.toLowerCase(),
+            status: mappedStatus,
+            district: 'เมืองเลย',
+            province: 'เลย',
+            attendeeCount: 1,
+            transportMethod: 'รถส่วนตัว',
+            registeredAt: new Date().toISOString(),
+            checkedIn: false,
+            qrCodeData: participantCode,
+            registrationSource: 'excel_import',
+          };
+
+          newAttendees.push(newAtt);
+        });
+
+        if (newAttendees.length === 0) {
+          setImportNotice({
+            type: 'error',
+            message: 'ไม่สามารถอ่านข้อมูลผู้ลงทะเบียนจากไฟล์ได้ กรุณาตรวจสอบหัวคอลัมน์ในไฟล์ Excel',
+          });
+          setIsImporting(false);
+          return;
+        }
+
+        // Save batch to Firebase and local storage
+        await saveAllAttendeesToFirestore(newAttendees);
+
+        // Update local state list
+        setAttendeesList((prev) => [...newAttendees, ...prev]);
+
+        setImportNotice({
+          type: 'success',
+          message: `นำเข้าข้อมูลสำเร็จทั้งหมด ${newAttendees.length} รายการ และบันทึกลงฐานข้อมูล Firebase เรียบร้อยแล้ว`,
+        });
+
+        // Trigger confetti
+        try {
+          confetti({
+            particleCount: 70,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch {}
+      } catch (err: any) {
+        console.error('Error importing Excel file:', err);
+        setImportNotice({
+          type: 'error',
+          message: `เกิดข้อผิดพลาดในการประมวลผลไฟล์: ${err?.message || 'รูปแบบไฟล์ไม่ถูกต้อง'}`,
+        });
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+
+    reader.readAsBinaryString(file);
+  };
+
+  // 4. Toggle Check-in status
+  const handleToggleCheckIn = async (attendee: Attendee) => {
+    const updated: Attendee = {
+      ...attendee,
+      checkedIn: !attendee.checkedIn,
+      checkedInAt: !attendee.checkedIn ? new Date().toISOString() : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setAttendeesList((prev) => prev.map((a) => (a.id === attendee.id ? updated : a)));
+    await saveAttendeeToFirestore(updated);
+  };
+
+  // 5. Delete Attendee
+  const handleDeleteAttendee = async (attendee: Attendee) => {
+    if (
+      !window.confirm(
+        `คุณต้องการลบข้อมูลของ "${attendee.prefix ? attendee.prefix + ' ' : ''}${attendee.firstName} ${attendee.lastName}" (${attendee.participantCode}) หรือไม่?`
+      )
+    ) {
+      return;
+    }
+
+    setAttendeesList((prev) => prev.filter((a) => a.id !== attendee.id));
+    await deleteAttendeeFromFirestore(attendee.id);
+  };
+
+  // 6. Clear All Attendees
+  const handleClearAll = async () => {
+    const confirmInput = prompt(
+      '⚠️ คำเตือน: คุณต้องการลบข้อมูลผู้ลงทะเบียนล่วงหน้าทั้งหมดออกจากฐานข้อมูลหรือไม่?\n\nพิมพ์ "CLEAR ALL" เพื่อยืนยัน:'
+    );
+    if (confirmInput !== 'CLEAR ALL') {
+      if (confirmInput !== null) alert('คำยืนยันไม่ถูกต้อง');
+      return;
+    }
+
+    setAttendeesList([]);
+    await clearAllAttendeesFromFirestore();
+    alert('ลบข้อมูลทั้งหมดเรียบร้อยแล้ว');
+  };
+
+  // 7. Single Form Submit
+  const handleSingleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
     const finalPrefix = prefix === 'อื่นๆ (ระบุเอง)' ? customPrefix.trim() : prefix;
     const finalPosition = position === 'อื่นๆ (ระบุเอง)' ? customPosition.trim() : position;
 
-    if (!finalPrefix) {
-      setFormError('กรุณาระบุคำนำหน้าชื่อ');
-      return;
-    }
-    if (!firstName.trim()) {
-      setFormError('กรุณากรอกชื่อ');
-      return;
-    }
-    if (!lastName.trim()) {
-      setFormError('กรุณากรอกนามสกุล');
-      return;
-    }
-    if (!finalPosition) {
-      setFormError('กรุณาระบุตำแหน่ง');
+    if (!fullNameInput.trim()) {
+      setFormError('กรุณากรอกชื่อ - นามสกุล');
       return;
     }
     if (!phone.trim()) {
@@ -149,42 +514,42 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     if (cleanPhone.length < 9 || cleanPhone.length > 10) {
-      setFormError('หมายเลขโทรศัพท์ต้องเป็นตัวเลข 9-10 หลัก (เช่น 0812345678)');
-      return;
-    }
-
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setFormError('รูปแบบอีเมลไม่ถูกต้อง');
+      setFormError('หมายเลขโทรศัพท์ต้องเป็นตัวเลข 9-10 หลัก');
       return;
     }
 
     setIsSubmitting(true);
-
     try {
-      // Determine participant code
-      const nextCode = getNextConsecutiveParticipantCode(attendeesList);
+      const nameParts = fullNameInput.trim().split(/\s+/).filter(Boolean);
+      const firstName = nameParts[0] || 'ผู้เข้าร่วม';
+      const lastName = nameParts.slice(1).join(' ') || '-';
 
-      // Determine general AttendeeStatus
+      const nextCode = customCode.trim() || getNextConsecutiveParticipantCode(attendeesList);
+
       let mappedStatus: AttendeeStatus = 'บุคคลทั่วไป';
-      if (finalPosition.includes('นักเรียน')) {
-        mappedStatus = 'นักเรียน';
-      } else if (finalPosition.includes('ครู') || finalPosition.includes('อาจารย์') || finalPosition.includes('ผู้อำนวยการ') || finalPosition.includes('ผู้บริหาร') || finalPosition.includes('บุคลากร')) {
+      if (finalPosition.includes('นักเรียน')) mappedStatus = 'นักเรียน';
+      else if (
+        finalPosition.includes('ครู') ||
+        finalPosition.includes('อาจารย์') ||
+        finalPosition.includes('ผู้อำนวยการ') ||
+        finalPosition.includes('ผู้บริหาร') ||
+        finalPosition.includes('บุคลากร')
+      )
         mappedStatus = 'ครู/อาจารย์';
-      } else if (finalPosition.includes('ผู้ปกครอง')) {
-        mappedStatus = 'ผู้ปกครอง';
-      }
+      else if (finalPosition.includes('ผู้ปกครอง')) mappedStatus = 'ผู้ปกครอง';
 
       const newAttendee: Attendee = {
         id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         participantCode: nextCode,
         prefix: finalPrefix,
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        firstName,
+        lastName,
         position: finalPosition,
+        schoolName: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
+        organization: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
         phone: cleanPhone,
         email: email.trim().toLowerCase() || `${cleanPhone}@pcshs.ac.th`,
         status: mappedStatus,
-        organization: organization.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
         district: 'เมืองเลย',
         province: 'เลย',
         attendeeCount: 1,
@@ -193,34 +558,22 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
         checkedIn: false,
         qrCodeData: nextCode,
         registrationSource: 'admin_entry',
-        schoolName: organization.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
       };
 
-      // Save to Firebase & local storage
       await saveAttendeeToFirestore(newAttendee);
-
-      // Update local state list
       setAttendeesList((prev) => [newAttendee, ...prev]);
 
-      if (onAddAttendee) {
-        onAddAttendee(newAttendee);
-      }
+      if (onAddAttendee) onAddAttendee(newAttendee);
 
-      // Success Trigger
       setCreatedAttendee(newAttendee);
       setIsSubmitting(false);
 
-      // Celebration effect
       try {
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.6 },
-        });
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
       } catch {}
     } catch (err: any) {
       console.error('Error adding attendee:', err);
-      setFormError(err?.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
+      setFormError(err?.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
       setIsSubmitting(false);
     }
   };
@@ -231,25 +584,11 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  // Filtered attendees for the recent list table
-  const recentAttendees = attendeesList.filter((att) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    const fullName = `${att.prefix || ''} ${att.firstName} ${att.lastName}`.toLowerCase();
-    return (
-      fullName.includes(query) ||
-      att.participantCode.toLowerCase().includes(query) ||
-      att.phone.includes(query) ||
-      (att.email && att.email.toLowerCase().includes(query)) ||
-      (att.position && att.position.toLowerCase().includes(query))
-    );
-  });
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-['Prompt',sans-serif] flex flex-col justify-between">
-      {/* Top Header Bar */}
+      {/* Top Sticky Header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <button
             type="button"
             onClick={onBackToHome}
@@ -259,13 +598,20 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             <span>กลับสู่หน้าหลัก</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
-              <ScanLine className="w-4 h-4" />
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs">
+              <FileSpreadsheet className="w-4 h-4" />
             </div>
-            <span className="font-extrabold text-sm sm:text-base text-slate-800">
-              สแกน QR Code สำหรับแอดมิน
-            </span>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-sm sm:text-base text-slate-900">
+                  ฐานข้อมูลกลุ่มที่ 1 : ลงทะเบียนล่วงหน้า
+                </span>
+                <span className="hidden sm:inline-block px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-md border border-blue-200">
+                  Pre-registered
+                </span>
+              </div>
+            </div>
           </div>
 
           <button
@@ -279,82 +625,235 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col items-center justify-center space-y-8">
+      {/* Main Body */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         
-        {/* Main Card (Matches User Interface Mockup) */}
-        <div className="w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-6">
+        {/* Top Overview & Excel Control Card */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
           
-          {/* Header Icon */}
-          <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-3xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20">
-            <ScanLine className="w-9 h-9 sm:w-11 sm:h-11" />
-          </div>
-
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200/80 text-blue-700 text-xs font-bold rounded-full mb-2">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>หน้าสำหรับ: 2. สแกน QR Code (Admin)</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">
-              ระบบสแกน QR Code เจ้าหน้าที่
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย
-            </p>
-          </div>
-
-          {/* Info Notice Box */}
-          <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-left text-xs text-slate-600 space-y-2">
-            <div className="flex items-center gap-1.5 font-bold text-slate-800">
-              <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
-              <span>หน้ารองรับข้อมูล (พร้อมระบบสแกนและเช็คชื่อกลุ่มคณะ)</span>
-            </div>
-            <p className="text-slate-500 leading-relaxed">
-              หน้านี้ถูกเตรียมไว้สำหรับระบบล็อกอินแอดมิน / เปิดกล้องสแกน QR Code / ค้นหาชื่อ-โรงเรียน / เช็คชื่อสมาชิกและคณะครู-นักเรียนแบบรายบุคคลเพื่อจัดทำเกียรติบัตร พร้อมให้ท่านส่งคำสั่งเพิ่มรายละเอียดในขั้นตอนถัดไป
-            </p>
-          </div>
-
-          {/* ACTION BUTTON AREA (Exactly in the requested position indicated by red box) */}
-          <div className="pt-1 space-y-3">
-            <button
-              type="button"
-              id="btn-add-new-attendee"
-              onClick={handleOpenModal}
-              className="w-full py-4 px-5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 text-white font-black text-base sm:text-lg rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer transform hover:-translate-y-0.5 active:scale-98 group"
-            >
-              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 border border-white/30">
-                <UserPlus className="w-5 h-5 text-white group-hover:scale-110 transition-transform" />
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+                <FileSpreadsheet className="w-6 h-6" />
               </div>
-              <span>เพิ่มข้อมูลผู้เข้าร่วมใหม่</span>
-            </button>
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold rounded-full mb-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>ระบบจัดการฐานข้อมูลสำหรับแอดมิน (Admin Only)</span>
+                </div>
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900">
+                  ฐานข้อมูลผู้ใช้กลุ่มที่ 1 : ลงทะเบียนล่วงหน้า
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                  เก็บข้อมูล 6 คอลัมน์หลัก: <strong className="text-slate-700 font-semibold">รหัส, ชื่อ, ตำแหน่ง, ชื่อสถานศึกษา(ถ้ามี), เบอร์โทรศัพท์, อีเมล</strong> ผ่านการอัปโหลดไฟล์ Excel
+                </p>
+              </div>
+            </div>
 
-            <button
-              type="button"
-              onClick={onBackToHome}
-              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+            {/* Action Buttons for Excel Import / Export / Template */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              
+              {/* 1. Download Template */}
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-slate-200 shadow-2xs"
+                title="ดาวน์โหลดไฟล์ตัวอย่าง Excel พร้อมหัวตาราง 6 คอลัมน์"
+              >
+                <Download className="w-4 h-4 text-blue-600" />
+                <span>ดาวน์โหลดเทมเพลต Excel (.XLSX)</span>
+              </button>
+
+              {/* 2. Hidden File Input & Upload Excel Button */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImportExcel}
+                accept=".xlsx, .xls, .csv"
+                className="hidden"
+              />
+              <button
+                type="button"
+                id="btn-upload-excel-attendees"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+                className="px-4 py-2.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md hover:shadow-blue-500/25 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+              >
+                <Upload className={`w-4 h-4 text-blue-100 ${isImporting ? 'animate-bounce' : ''}`} />
+                <span>{isImporting ? 'กำลังนำเข้าข้อมูล...' : 'อัปโหลดไฟล์ Excel (.XLSX)'}</span>
+              </button>
+
+              {/* 3. Export Excel */}
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                className="px-3.5 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs rounded-xl border border-emerald-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                title="ดาวน์โหลดรายชื่อผู้ลงทะเบียนทั้งหมดในรูปแบบ Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Export รายชื่อ</span>
+              </button>
+
+              {/* 4. Single Add Manual Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setFullNameInput('');
+                  setPhone('');
+                  setEmail('');
+                  setSchoolName('');
+                  setCustomCode('');
+                  setFormError('');
+                  setCreatedAttendee(null);
+                  setIsAddModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200 transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4 text-amber-600" />
+                <span>เพิ่มรายบุคคล</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Import Notice Banner */}
+          {importNotice && (
+            <div
+              className={`p-3.5 rounded-2xl border text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 animate-in fade-in duration-200 ${
+                importNotice.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span>กลับสู่หน้าแรกของเว็บไซต์</span>
-            </button>
+              <div className="flex items-center gap-2">
+                {importNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>{importNotice.message}</span>
+              </div>
+              <button
+                onClick={() => setImportNotice(null)}
+                className="p-1 hover:bg-black/5 rounded-lg text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Key Metric Counters */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 block">
+                  ยอดลงทะเบียนล่วงหน้าทั้งหมด
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-slate-900">
+                  {totalCount} <span className="text-xs font-normal text-slate-500">คน</span>
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+                <User className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-700 block">
+                  สแกนเช็คอินเข้างานแล้ว
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-800">
+                  {checkedInCount} <span className="text-xs font-normal text-emerald-600">คน</span>
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-amber-700 block">
+                  ยังไม่ได้เช็คอิน
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-amber-800">
+                  {notCheckedInCount} <span className="text-xs font-normal text-amber-600">คน</span>
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                <QrCode className="w-5 h-5" />
+              </div>
+            </div>
+
+            <div className="bg-purple-50/70 border border-purple-200/80 rounded-2xl p-3.5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-purple-700 block">
+                  สัดส่วน ครู / นร. / อื่นๆ
+                </span>
+                <span className="text-sm sm:text-base font-bold text-purple-900 mt-1 block">
+                  ครู {teachersCount} • นร. {studentsCount} • อื่นๆ {otherCount}
+                </span>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                <Briefcase className="w-5 h-5" />
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* RECENT ADDED PARTICIPANTS PREVIEW LIST (Quick Admin Table) */}
-        {attendeesList.length > 0 && (
-          <div className="w-full max-w-4xl bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-md space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm">
-                  {attendeesList.length}
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
-                    รายชื่อผู้เข้าร่วมในระบบ (รวม {attendeesList.length} ท่าน)
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    ข้อมูลผู้เข้าร่วมงานที่ลงทะเบียนและบันทึกผ่านระบบ
-                  </p>
-                </div>
+        {/* DATA TABLE SECTION (แสดงตารางรายชื่อในหน้าเดียวกัน) */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-4">
+          
+          {/* Table Header Controls */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 pb-4 border-b border-slate-100">
+            <div>
+              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                <span>ตารางรายชื่อผู้ลงทะเบียนล่วงหน้า</span>
+                <span className="text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full">
+                  {filteredAttendees.length} / {totalCount} ท่าน
+                </span>
+              </h2>
+              <p className="text-xs text-slate-500">
+                ข้อมูลที่บันทึกลงในฐานข้อมูล Firebase และพร้อมสำหรับการสแกน QR Code หน้างาน
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Status Filter Pills */}
+              <div className="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    statusFilter === 'all'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  ทั้งหมด ({totalCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('checkedIn')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    statusFilter === 'checkedIn'
+                      ? 'bg-white text-emerald-700 shadow-2xs'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  เช็คอินแล้ว ({checkedInCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter('notCheckedIn')}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    statusFilter === 'notCheckedIn'
+                      ? 'bg-white text-amber-700 shadow-2xs'
+                      : 'hover:text-slate-900'
+                  }`}
+                >
+                  ยังไม่เช็คอิน ({notCheckedInCount})
+                </button>
               </div>
 
               {/* Search Bar */}
@@ -362,85 +861,293 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="ค้นหาชื่อ, รหัส, เบอร์..."
+                  placeholder="ค้นหารหัส, ชื่อ, ตำแหน่ง, โรงเรียน..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-800"
                 />
               </div>
-            </div>
 
-            {/* Attendees Table */}
-            <div className="overflow-x-auto max-h-72 overflow-y-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-bold sticky top-0">
-                  <tr>
-                    <th className="py-2.5 px-3 rounded-l-lg">รหัส QR</th>
-                    <th className="py-2.5 px-3">คำนำหน้า ชื่อ-สกุล</th>
-                    <th className="py-2.5 px-3">ตำแหน่ง</th>
-                    <th className="py-2.5 px-3">เบอร์โทรศัพท์</th>
-                    <th className="py-2.5 px-3">อีเมล</th>
-                    <th className="py-2.5 px-3 rounded-r-lg text-center">สถานะ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {recentAttendees.slice(0, 15).map((att) => (
-                    <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-2.5 px-3 font-mono font-bold text-blue-600">
-                        {att.participantCode}
-                      </td>
-                      <td className="py-2.5 px-3 font-medium text-slate-900">
-                        {att.prefix ? `${att.prefix} ` : ''}{att.firstName} {att.lastName}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[11px] font-medium">
-                          {att.position || att.status || '-'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-600 font-mono">
-                        {att.phone}
-                      </td>
-                      <td className="py-2.5 px-3 text-slate-500 truncate max-w-[150px]">
-                        {att.email}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {att.checkedIn ? (
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-bold">
-                            เช็คอินแล้ว
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-bold">
-                            ยังไม่เช็คอิน
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {recentAttendees.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-6 text-center text-slate-400">
-                        ไม่พบข้อมูลที่ตรงกับคำค้นหา
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              {attendeesList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="px-2.5 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                  title="ลบข้อมูลผู้เข้าร่วมทั้งหมด"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">ล้างฐานข้อมูล</span>
+                </button>
+              )}
             </div>
           </div>
-        )}
+
+          {/* Attendees Table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <table className="w-full text-left text-xs sm:text-sm text-slate-700">
+              <thead className="bg-slate-50 text-slate-700 uppercase text-[11px] font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3.5">1. รหัส</th>
+                  <th className="px-4 py-3.5">2. ชื่อ - นามสกุล</th>
+                  <th className="px-4 py-3.5">3. ตำแหน่ง</th>
+                  <th className="px-4 py-3.5">4. ชื่อสถานศึกษา (ถ้ามี)</th>
+                  <th className="px-4 py-3.5">5. เบอร์โทรศัพท์</th>
+                  <th className="px-4 py-3.5">6. อีเมล</th>
+                  <th className="px-4 py-3.5 text-center">สถานะเช็คอิน</th>
+                  <th className="px-4 py-3.5 text-right">QR & จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {filteredAttendees.map((att) => (
+                  <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
+                    
+                    {/* 1. รหัส */}
+                    <td className="px-4 py-3">
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md text-xs inline-block">
+                        {att.participantCode}
+                      </span>
+                    </td>
+
+                    {/* 2. ชื่อ */}
+                    <td className="px-4 py-3 font-semibold text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>
+                          {att.prefix ? `${att.prefix} ` : ''}
+                          {att.firstName} {att.lastName}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* 3. ตำแหน่ง */}
+                    <td className="px-4 py-3">
+                      <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
+                        {att.position || att.status || '-'}
+                      </span>
+                    </td>
+
+                    {/* 4. ชื่อสถานศึกษา(ถ้ามี) */}
+                    <td className="px-4 py-3 text-slate-700">
+                      <div className="flex items-center gap-1.5">
+                        <School className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        <span className="font-medium text-slate-800">
+                          {att.schoolName || att.organization || '-'}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* 5. เบอร์โทรศัพท์ */}
+                    <td className="px-4 py-3 font-mono text-slate-600 text-xs">
+                      {att.phone ? (
+                        <a
+                          href={`tel:${att.phone}`}
+                          className="hover:text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          <span>{att.phone}</span>
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+
+                    {/* 6. อีเมล */}
+                    <td className="px-4 py-3 text-slate-600 text-xs truncate max-w-[160px]">
+                      {att.email ? (
+                        <div className="flex items-center gap-1">
+                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate">{att.email}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+
+                    {/* 7. สถานะเช็คอิน */}
+                    <td className="px-4 py-3 text-center">
+                      {att.checkedIn ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          เช็คอินแล้ว
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-slate-500 font-medium text-xs bg-slate-100 px-2.5 py-1 rounded-full">
+                          ยังไม่เช็คอิน
+                        </span>
+                      )}
+                    </td>
+
+                    {/* 8. QR & จัดการ */}
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setViewingAttendeeQr(att)}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 transition-colors cursor-pointer flex items-center gap-1"
+                          title="ดู QR Code ประจำตัว"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-blue-600" />
+                          <span>QR</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCheckIn(att)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                            att.checkedIn
+                              ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                          }`}
+                        >
+                          {att.checkedIn ? 'ยกเลิก' : 'เช็คอิน'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAttendee(att)}
+                          className="p-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs transition-colors cursor-pointer border border-red-200/60"
+                          title="ลบรายการ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {filteredAttendees.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-12 text-center text-slate-400 space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                        <FileSpreadsheet className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-700">
+                          {searchQuery
+                            ? 'ไม่พบข้อมูลที่ตรงกับคำค้นหา'
+                            : 'ยังไม่มีข้อมูลผู้ลงทะเบียนล่วงหน้าในระบบ'}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                          {searchQuery
+                            ? 'ลองเปลี่ยนคำค้นหาเป็นชื่อ รหัส เบอร์โทรศัพท์ หรือโรงเรียน'
+                            : 'กดปุ่ม "อัปโหลดไฟล์ Excel (.XLSX)" ด้านบนเพื่อนำเข้ารายชื่อผู้ลงทะเบียนล่วงหน้าพร้อมกันได้ทันที'}
+                        </p>
+                      </div>
+                      {!searchQuery && (
+                        <div className="pt-2 flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={handleDownloadTemplate}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
+                            <span>โหลดไฟล์ตัวอย่าง</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>อัปโหลด Excel</span>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </main>
 
-      {/* FOOTER */}
+      {/* Footer */}
       <footer className="py-4 text-center text-xs text-slate-400 border-t border-slate-200 bg-white">
         © 2026 โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย (PCSHS Loei Open House 2026)
       </footer>
 
-      {/* MODAL: เพิ่มข้อมูลผู้เข้าร่วมใหม่ (Form Modal) */}
+      {/* QR CODE VIEW MODAL */}
+      {viewingAttendeeQr && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <button
+              type="button"
+              onClick={() => setViewingAttendeeQr(null)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div>
+              <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 text-[11px] font-bold rounded-full border border-blue-200">
+                บัตรประจำตัวผู้ลงทะเบียนล่วงหน้า
+              </span>
+              <h3 className="text-base font-extrabold text-slate-900 mt-2">
+                {viewingAttendeeQr.prefix ? `${viewingAttendeeQr.prefix} ` : ''}
+                {viewingAttendeeQr.firstName} {viewingAttendeeQr.lastName}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {viewingAttendeeQr.position || viewingAttendeeQr.status} • {viewingAttendeeQr.schoolName || viewingAttendeeQr.organization}
+              </p>
+            </div>
+
+            {/* QR Code */}
+            <div className="bg-slate-50 border-2 border-blue-100 rounded-2xl p-4 inline-block shadow-inner mx-auto">
+              <div className="bg-white p-3 rounded-xl shadow-xs inline-block">
+                <QRCodeSVG
+                  value={viewingAttendeeQr.participantCode}
+                  size={160}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+              <div className="mt-2 text-center">
+                <div className="font-mono text-base font-black text-blue-600 tracking-wider">
+                  {viewingAttendeeQr.participantCode}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-0.5">
+                  📞 {viewingAttendeeQr.phone}
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleCopyCode(viewingAttendeeQr.participantCode)}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isCopied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700 font-bold">คัดลอกรหัสแล้ว!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-600" />
+                    <span>คัดลอกรหัส ({viewingAttendeeQr.participantCode})</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewingAttendeeQr(null)}
+                className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SINGLE MANUAL ADD MODAL */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-2xl text-slate-900 my-auto">
-            
-            {/* Close Button */}
             <button
               onClick={() => setIsAddModalOpen(false)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 rounded-full bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
@@ -449,18 +1156,17 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             </button>
 
             {!createdAttendee ? (
-              /* FORM STATE */
-              <form onSubmit={handleFormSubmit} className="space-y-4">
+              <form onSubmit={handleSingleFormSubmit} className="space-y-4">
                 <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
                   <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <UserPlus className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-                      เพิ่มข้อมูลผู้เข้าร่วมใหม่
+                    <h2 className="text-lg font-extrabold text-slate-900">
+                      เพิ่มข้อมูลผู้ลงทะเบียนล่วงหน้า
                     </h2>
                     <p className="text-xs text-slate-500">
-                      กรอกข้อมูลผู้เข้าร่วมงานเพื่อสร้างรหัสและ QR Code
+                      กรอกข้อมูลตาม 6 ฟิลด์มาตรฐานเพื่อบันทึกลงฐานข้อมูล
                     </p>
                   </div>
                 </div>
@@ -472,263 +1178,189 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                   </div>
                 )}
 
-                {/* 1. คำนำหน้าชื่อ (Prefix) */}
+                {/* 1. รหัส (ถ้ามี/เว้นว่างให้อัตโนมัติ) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    คำนำหน้าชื่อ <span className="text-red-500">*</span>
+                    1. รหัสประจำตัว <span className="text-slate-400 font-normal">(เว้นว่างเพื่อให้ระบบสร้างต่ออัตโนมัติ)</span>
                   </label>
-                  <select
-                    value={prefix}
-                    onChange={(e) => setPrefix(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium text-slate-800"
-                    required
-                  >
-                    {PREFIX_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                  {prefix === 'อื่นๆ (ระบุเอง)' && (
-                    <input
-                      type="text"
-                      placeholder="ระบุคำนำหน้าชื่อ เช่น ว่าที่ร้อยตรี, ศ.ดร."
-                      value={customPrefix}
-                      onChange={(e) => setCustomPrefix(e.target.value)}
-                      className="mt-2 w-full px-3.5 py-2 text-sm bg-white border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  )}
+                  <input
+                    type="text"
+                    placeholder="เช่น PCSHS-0001 (ถ้าเว้นว่างจะรันต่อให้อัตโนมัติ)"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value)}
+                    className="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
+                  />
                 </div>
 
-                {/* 2. ชื่อ & 3. สกุล */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 2. คำนำหน้า & ชื่อ-สกุล */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      ชื่อ <span className="text-red-500">*</span>
+                      คำนำหน้า
                     </label>
-                    <div className="relative">
-                      <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="ชื่อจริง (เช่น สมชาย)"
-                        value={firstName}
-                        onChange={(e) => setFirstName(e.target.value)}
-                        className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      สกุล <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="นามสกุล (เช่น ใจดี)"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* 4. ตำแหน่ง (Position) */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    ตำแหน่ง <span className="text-red-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Briefcase className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none" />
                     <select
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
-                      required
+                      value={prefix}
+                      onChange={(e) => setPrefix(e.target.value)}
+                      className="w-full px-2.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none font-medium text-slate-800"
                     >
-                      {POSITION_OPTIONS.map((pos) => (
-                        <option key={pos} value={pos}>
-                          {pos}
+                      {PREFIX_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
                         </option>
                       ))}
                     </select>
                   </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      2. ชื่อ - นามสกุล <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="เช่น สมชาย ใจดี"
+                      value={fullNameInput}
+                      onChange={(e) => setFullNameInput(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* 3. ตำแหน่ง */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    3. ตำแหน่ง <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={position}
+                    onChange={(e) => setPosition(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium text-slate-800"
+                  >
+                    {POSITION_OPTIONS.map((pos) => (
+                      <option key={pos} value={pos}>
+                        {pos}
+                      </option>
+                    ))}
+                  </select>
                   {position === 'อื่นๆ (ระบุเอง)' && (
                     <input
                       type="text"
-                      placeholder="ระบุตำแหน่ง เช่น นักวิชาการศึกษา, วิทยากรพิเศษ"
+                      placeholder="ระบุตำแหน่งเอง"
                       value={customPosition}
                       onChange={(e) => setCustomPosition(e.target.value)}
-                      className="mt-2 w-full px-3.5 py-2 text-sm bg-white border border-blue-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="mt-2 w-full px-3 py-1.5 text-xs bg-white border border-blue-300 rounded-xl"
                       required
                     />
                   )}
                 </div>
 
-                {/* 5. หมายเลขโทรศัพท์ */}
+                {/* 4. ชื่อสถานศึกษา(ถ้ามี) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    หมายเลขโทรศัพท์ <span className="text-red-500">*</span>
+                    4. ชื่อสถานศึกษา(ถ้ามี)
                   </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="เช่น โรงเรียนเลยพิทยาคม"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                  />
+                </div>
+
+                {/* 5. เบอร์โทรศัพท์ & 6. อีเมล */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      5. เบอร์โทรศัพท์ <span className="text-red-500">*</span>
+                    </label>
                     <input
                       type="tel"
                       placeholder="0812345678"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       maxLength={10}
-                      className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-slate-800"
                       required
                     />
                   </div>
-                  <span className="text-[11px] text-slate-400 mt-0.5 block">
-                    ตัวเลข 10 หลัก ใช้สำหรับตรวจสอบและรับสิทธิ์
-                  </span>
-                </div>
 
-                {/* 6. Email */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Email (อีเมล) <span className="text-slate-400 font-normal">(ถ้ามี)</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      6. อีเมล
+                    </label>
                     <input
                       type="email"
                       placeholder="user@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
+                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
                     />
                   </div>
                 </div>
 
-                {/* 7. โรงเรียน / หน่วยงาน */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    สถานศึกษา / โรงเรียน / หน่วยงาน
-                  </label>
-                  <div className="relative">
-                    <School className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="ชื่อโรงเรียนหรือสังกัด"
-                      value={organization}
-                      onChange={(e) => setOrganization(e.target.value)}
-                      className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                {/* Buttons */}
-                <div className="pt-3 flex items-center justify-end gap-2.5">
+                {/* Action buttons */}
+                <div className="pt-3 flex items-center justify-end gap-2">
                   <button
                     type="button"
                     onClick={() => setIsAddModalOpen(false)}
-                    className="px-4 py-2.5 text-slate-600 hover:text-slate-800 text-xs sm:text-sm font-bold rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                    className="px-4 py-2 text-slate-600 hover:text-slate-800 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors"
                   >
                     ยกเลิก
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    {isSubmitting ? (
-                      <span>กำลังบันทึก...</span>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>บันทึกข้อมูลผู้เข้าร่วม</span>
-                      </>
-                    )}
+                    {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
                   </button>
                 </div>
               </form>
             ) : (
-              /* SUCCESS STATE WITH QR CODE */
-              <div className="text-center space-y-5 py-2 animate-in zoom-in-95 duration-200">
-                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                  <CheckCircle2 className="w-8 h-8" />
+              <div className="text-center space-y-4 py-2 animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
-
                 <div>
-                  <span className="px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
-                    บันทึกข้อมูลสำเร็จเรียบร้อย
+                  <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
+                    บันทึกข้อมูลสำเร็จ
                   </span>
-                  <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 mt-2">
+                  <h3 className="text-base font-extrabold text-slate-900 mt-1.5">
                     {createdAttendee.prefix ? `${createdAttendee.prefix} ` : ''}
                     {createdAttendee.firstName} {createdAttendee.lastName}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    ตำแหน่ง: {createdAttendee.position || createdAttendee.status}
+                  <p className="text-xs text-slate-500">
+                    รหัสประจำตัว: <span className="font-mono font-bold text-blue-600">{createdAttendee.participantCode}</span>
                   </p>
                 </div>
 
-                {/* QR Code Container */}
-                <div className="bg-slate-50 border-2 border-blue-100 rounded-2xl p-4 inline-block shadow-inner mx-auto">
-                  <div className="bg-white p-3 rounded-xl shadow-xs inline-block">
-                    <QRCodeSVG
-                      value={createdAttendee.participantCode}
-                      size={160}
-                      level="H"
-                      includeMargin={false}
-                    />
-                  </div>
-                  <div className="mt-2 text-center">
-                    <div className="font-mono text-base font-black text-blue-600 tracking-wider">
-                      {createdAttendee.participantCode}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      เบอร์โทร: {createdAttendee.phone}
-                    </div>
-                  </div>
+                <div className="bg-slate-50 border border-blue-100 rounded-2xl p-3 inline-block">
+                  <QRCodeSVG value={createdAttendee.participantCode} size={140} level="H" />
                 </div>
 
-                {/* Action Buttons for QR */}
-                <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-center gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => handleCopyCode(createdAttendee.participantCode)}
-                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    onClick={() => {
+                      setFullNameInput('');
+                      setPhone('');
+                      setEmail('');
+                      setSchoolName('');
+                      setCustomCode('');
+                      setCreatedAttendee(null);
+                    }}
+                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200"
                   >
-                    {isCopied ? (
-                      <>
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">คัดลอกรหัสแล้ว!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 text-slate-600" />
-                        <span>คัดลอกรหัสประจำตัว ({createdAttendee.participantCode})</span>
-                      </>
-                    )}
+                    เพิ่มท่านต่อไป
                   </button>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetForm();
-                        setCreatedAttendee(null);
-                      }}
-                      className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>เพิ่มท่านต่อไป</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAddModalOpen(false)}
-                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <span>ปิดหน้าต่าง</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(false)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl"
+                  >
+                    ปิดหน้าต่าง
+                  </button>
                 </div>
               </div>
             )}

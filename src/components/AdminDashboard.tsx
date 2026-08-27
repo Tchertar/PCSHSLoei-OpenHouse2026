@@ -90,7 +90,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   auditLogs,
   addAuditLog,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'scanner' | 'activities' | 'scheduleEditor' | 'admins' | 'logs' | 'mapEditor'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'activities' | 'scheduleEditor' | 'admins' | 'logs' | 'mapEditor'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Schedule Editor State
@@ -1616,18 +1616,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('scanner')}
-            className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'scanner'
-                ? 'bg-white text-orange-600 border-t-2 border-orange-500 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <QrCode className="w-4 h-4" />
-            <span>สแกน QR Code เช็คอิน</span>
-          </button>
-
-          <button
             onClick={() => setActiveTab('activities')}
             className={`px-4 py-2.5 rounded-t-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'activities'
@@ -1854,73 +1842,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* TAB 2: QR CODE SCANNER */}
-          {activeTab === 'scanner' && (
-            <div className="max-w-2xl mx-auto space-y-6 py-4">
-              <div className="text-center space-y-2">
-                <h4 className="text-xl font-bold text-slate-900 flex items-center justify-center gap-2">
-                  <Camera className="w-6 h-6 text-orange-500" />
-                  <span>สแกน QR Code ประจำตัวผู้เข้าร่วม</span>
-                </h4>
-                <p className="text-xs text-slate-600">
-                  สแกนรหัสผ่านกล้อง หรือ พิมพ์รหัสผู้เข้าร่วม (เช่น <code className="text-orange-600 font-bold">PCSHS-0001</code>) เพื่อบันทึกข้อมูลการเข้างานทันที
-                </p>
-              </div>
-
-              {/* Status Alert */}
-              {scannerMessage && (
-                <div
-                  className={`p-4 rounded-xl border text-sm font-bold shadow-sm ${
-                    scannerMessage.type === 'success'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : scannerMessage.type === 'error'
-                      ? 'bg-red-50 border-red-200 text-red-800'
-                      : 'bg-blue-50 border-blue-200 text-blue-800'
-                  }`}
-                >
-                  {scannerMessage.text}
-                </div>
-              )}
-
-              {/* Code Input Form */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                <label className="block text-xs font-semibold text-slate-700">
-                  พิมพ์รหัสผู้เข้าร่วม (Participant Code) หรือ เบอร์โทรครูผู้ประสานงาน
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={scannedCodeInput}
-                    onChange={(e) => setScannedCodeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleCheckIn(scannedCodeInput);
-                        setScannedCodeInput('');
-                      }
-                    }}
-                    placeholder="PCSHS-0001"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900 font-mono text-sm focus:outline-none focus:border-orange-500"
-                  />
-                  <button
-                    onClick={() => {
-                      handleCheckIn(scannedCodeInput);
-                      setScannedCodeInput('');
-                    }}
-                    className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm rounded-xl shadow cursor-pointer transition-transform hover:scale-105"
-                  >
-                    บันทึกเช็คอิน
-                  </button>
-                </div>
-              </div>
-
-              {/* Live Device Camera Scanner Component */}
-              <CameraScanner
-                onScanSuccess={(decodedText) => handleCheckIn(decodedText)}
-                scannerMessage={scannerMessage}
-              />
             </div>
           )}
 
