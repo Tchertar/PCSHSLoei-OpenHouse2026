@@ -46,38 +46,31 @@ export const getNextConsecutiveParticipantCode = (attendeesList: Attendee[]): st
 };
 
 /**
+ * Normalizes Thai phone numbers: if 9 digits, prepend '0' so it becomes a valid 10-digit number (e.g. 982847738 -> 0982847738).
+ */
+export const formatThaiPhoneNumber = (phone: string | number | undefined | null): string => {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 9) {
+    return `0${digits}`;
+  }
+  return digits;
+};
+
+/**
  * Ensures all attendees have valid participantCode and qrCodeData without overwriting user-provided custom codes.
  */
 export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] => {
-  // Deduplicate by participantCode and unique name+phone
-  const seenCodes = new Set<string>();
-  const seenKeys = new Set<string>();
-  const deduplicated: Attendee[] = [];
-
-  for (const att of attendeesList) {
+  return attendeesList.map((att) => {
     const rawCode = (att.participantCode || '').trim();
-    const rawName = `${att.prefix || ''} ${att.firstName || ''} ${att.lastName || ''}`.trim().toLowerCase();
-    const rawPhone = (att.phone || '').trim();
-    const key = `${rawName}_${rawPhone}`;
-
-    if (rawCode && seenCodes.has(rawCode.toLowerCase())) {
-      continue; // skip duplicate code
-    }
-    if (rawName && rawPhone && rawPhone !== '0000000000' && seenKeys.has(key)) {
-      continue; // skip duplicate person
-    }
-
-    if (rawCode) seenCodes.add(rawCode.toLowerCase());
-    if (key !== '_') seenKeys.add(key);
-
-    deduplicated.push({
+    const rawPhone = formatThaiPhoneNumber(att.phone);
+    return {
       ...att,
+      phone: rawPhone,
       participantCode: rawCode || att.id,
       qrCodeData: att.qrCodeData || rawCode || att.id,
-    });
-  }
-
-  return deduplicated;
+    };
+  });
 };
 
 export const getDeletedAttendeeIds = (): Set<string> => {

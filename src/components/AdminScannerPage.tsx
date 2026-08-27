@@ -37,6 +37,7 @@ import {
   clearAllAttendeesFromFirestore,
   getNextConsecutiveParticipantCode,
   subscribeAttendees,
+  formatThaiPhoneNumber,
 } from '../lib/firebase';
 
 interface AdminScannerPageProps {
@@ -434,7 +435,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
           // 5. เบอร์โทรศัพท์ (Phone)
           const rawPhone = getValue('เบอร์โทรศัพท์', 'เบอร์โทร', 'เบอร์ติดต่อ', 'โทร', 'Phone', 'tel', 'mobile');
-          const cleanPhone = rawPhone.replace(/[^0-9]/g, '') || '0000000000';
+          const cleanPhone = formatThaiPhoneNumber(rawPhone) || '0000000000';
 
           // 6. อีเมล (Email)
           let rawEmail = getValue('อีเมล', 'Email', 'E-mail', 'e-mail', 'mail');
@@ -444,7 +445,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
           const codeSafe = participantCode.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
           const nameSafe = `${firstName}_${lastName}`.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
-          const uniqueId = `att_${codeSafe || nameSafe || idx}`;
+          const uniqueId = `att_${codeSafe || `${nameSafe}_${idx}`}`;
 
           const newAtt: Attendee = {
             id: uniqueId,
@@ -480,22 +481,18 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
           return;
         }
 
-        // Deduplicate imported batch by participantCode & name+phone
+        // Deduplicate only by exact participantCode if non-empty, preserving all unique rows
         const seenCodes = new Set<string>();
-        const seenNames = new Set<string>();
         const uniqueBatch: Attendee[] = [];
 
         for (const att of newAttendees) {
           const c = (att.participantCode || '').toLowerCase().trim();
-          const n = `${att.firstName}_${att.lastName}_${att.phone}`.toLowerCase().trim();
           if (c && seenCodes.has(c)) continue;
-          if (seenNames.has(n)) continue;
           if (c) seenCodes.add(c);
-          seenNames.add(n);
           uniqueBatch.push(att);
         }
 
-        // Replace and save cleanly to Firebase and local storage (prevent 114 duplicate items)
+        // Replace and save cleanly to Firebase and local storage
         await saveAllAttendeesToFirestore(uniqueBatch, true);
 
         // Update local state list with exact imported items
@@ -503,7 +500,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
         setImportNotice({
           type: 'success',
-          message: `นำเข้าข้อมูลสำเร็จทั้งหมด ${uniqueBatch.length} รายการ (รหัสตรงตามไฟล์ Excel และไม่มีรายการซ้ำซ้อน)`,
+          message: `นำเข้าข้อมูลสำเร็จทั้งหมด ${uniqueBatch.length} รายการ (รหัสตรงตามไฟล์ Excel และหมายเลขโทรศัพท์ขึ้นต้นด้วย 0 ครบถ้วน)`,
         });
 
         // Trigger confetti
@@ -622,9 +619,9 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
       return;
     }
 
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const cleanPhone = formatThaiPhoneNumber(phone);
     if (cleanPhone.length < 9 || cleanPhone.length > 10) {
-      setFormError('หมายเลขโทรศัพท์ต้องเป็นตัวเลข 9-10 หลัก');
+      setFormError('หมายเลขโทรศัพท์ต้องเป็นตัวเลข 9-10 หลัก (เช่น 0812345678)');
       return;
     }
 
@@ -1062,11 +1059,11 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                     <td className="px-4 py-3 font-mono text-slate-600 text-xs">
                       {att.phone ? (
                         <a
-                          href={`tel:${att.phone}`}
-                          className="hover:text-blue-600 hover:underline flex items-center gap-1"
+                          href={`tel:${formatThaiPhoneNumber(att.phone)}`}
+                          className="hover:text-blue-600 hover:underline flex items-center gap-1 font-medium"
                         >
                           <Phone className="w-3 h-3 text-slate-400" />
-                          <span>{att.phone}</span>
+                          <span>{formatThaiPhoneNumber(att.phone)}</span>
                         </a>
                       ) : (
                         <span className="text-slate-400">-</span>
@@ -1229,7 +1226,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                   {viewingAttendeeQr.participantCode}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5">
-                  📞 {viewingAttendeeQr.phone}
+                  📞 {formatThaiPhoneNumber(viewingAttendeeQr.phone)}
                 </div>
               </div>
             </div>
