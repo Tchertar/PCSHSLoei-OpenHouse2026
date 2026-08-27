@@ -27,12 +27,12 @@ const SCHEDULES_COLLECTION = 'schedules';
 // One-time automatic purge of all legacy participants from Firestore and LocalStorage
 if (typeof window !== 'undefined') {
   try {
-    const isPurged = localStorage.getItem('pcshs_attendees_purged_all_v4');
+    const isPurged = localStorage.getItem('pcshs_attendees_purged_all_v5');
     if (!isPurged) {
       localStorage.removeItem('pcshs_attendees');
       localStorage.removeItem('pcshs_locally_saved_attendees');
       localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify([]));
-      localStorage.setItem('pcshs_attendees_purged_all_v4', 'true');
+      localStorage.setItem('pcshs_attendees_purged_all_v5', 'true');
       
       // Immediately clear all existing remote documents from Firestore collection
       setTimeout(async () => {
@@ -46,7 +46,7 @@ if (typeof window !== 'undefined') {
         } catch (e) {
           console.warn('Auto purge Firestore attendees error:', e);
         }
-      }, 100);
+      }, 50);
     }
   } catch {}
 }
