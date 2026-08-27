@@ -24,33 +24,6 @@ const AUDIT_LOGS_COLLECTION = 'audit_logs';
 const MAP_BUILDINGS_COLLECTION = 'map_buildings';
 const SCHEDULES_COLLECTION = 'schedules';
 
-// One-time automatic purge of all legacy participants from Firestore and LocalStorage
-if (typeof window !== 'undefined') {
-  try {
-    const isPurged = localStorage.getItem('pcshs_attendees_purged_all_v5');
-    if (!isPurged) {
-      localStorage.removeItem('pcshs_attendees');
-      localStorage.removeItem('pcshs_locally_saved_attendees');
-      localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify([]));
-      localStorage.setItem('pcshs_attendees_purged_all_v5', 'true');
-      
-      // Immediately clear all existing remote documents from Firestore collection
-      setTimeout(async () => {
-        try {
-          const q = query(collection(db, ATTENDEES_COLLECTION));
-          const snapshot = await getDocs(q);
-          const deletePromises = snapshot.docs.map((docSnap) =>
-            deleteDoc(doc(db, ATTENDEES_COLLECTION, docSnap.id)).catch(() => {})
-          );
-          await Promise.all(deletePromises);
-        } catch (e) {
-          console.warn('Auto purge Firestore attendees error:', e);
-        }
-      }, 50);
-    }
-  } catch {}
-}
-
 // --- ATTENDEES ---
 
 /**
@@ -73,7 +46,7 @@ export const getNextConsecutiveParticipantCode = (attendeesList: Attendee[]): st
 };
 
 /**
- * Ensures all attendees have valid participantCode and qrCodeData WITHOUT overwriting user-provided custom codes from Excel.
+ * Ensures all attendees have valid participantCode and qrCodeData without overwriting user-provided custom codes.
  */
 export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] => {
   // Deduplicate by participantCode and unique name+phone
@@ -107,41 +80,8 @@ export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] =>
   return deduplicated;
 };
 
-// Base set of deleted attendee IDs (initial cleaned batches)
-const INITIAL_DELETED_ATTENDEE_IDS = [
-  'att_1787242591226_0_zyj0',
-  'att_1787242591235_1_34ef',
-  'att_1787242591236_2_pr1l',
-  'att_1787242591236_3_7ko8',
-  'att_1787242591236_4_tm90',
-  'att_1787242591236_5_k055',
-  'att_1787242591236_6_x8n3',
-  'att_1787242591237_10_nswe',
-  'att_1787242591237_11_u6vo',
-  'att_1787242591237_7_2u1s',
-  'att_1787242591237_8_j9j7',
-  'att_1787242591237_9_a3ss',
-  'att_1787242591238_12_vwti',
-  'att_1787242591238_13_t0ha',
-  'att_1787242591238_14_m9i4',
-  'att_1787242591238_15_cnws',
-  'att_1787242591238_16_lcy5',
-  'att_1787242591238_17_9xa1',
-  'att_1787242591238_18_c93j',
-  'att_1787242591238_19_0cfh',
-  'att_1787242591239_20_zsiw',
-  'att_1787242591239_21_vffz',
-  'att_1787242591239_22_c5ho',
-  'att_1787242591239_23_v1kz',
-  'att_1787242591239_24_jh9y',
-  'att_1787242591239_25_uevf',
-  'att_1787242591240_26_uibd',
-  'att_1787242591240_27_znhl',
-  'att_1787242591240_28_0dhe',
-];
-
 export const getDeletedAttendeeIds = (): Set<string> => {
-  const set = new Set<string>(INITIAL_DELETED_ATTENDEE_IDS);
+  const set = new Set<string>();
   try {
     const stored = localStorage.getItem('pcshs_deleted_attendee_ids');
     if (stored) {
@@ -216,16 +156,6 @@ export const removeLocalAttendeeRecord = (id: string) => {
   }
 };
 
-// Initial attendee field overrides (e.g. customized classifications)
-const INITIAL_ATTENDEE_OVERRIDES: Record<string, Partial<Attendee>> = {
-  att_1787053982850: {
-    schoolType: 'นักเรียน',
-    status: 'นักเรียน',
-    serviceArea: 'นักเรียน',
-    studentType: 'นักเรียน',
-  },
-};
-
 export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
   const q = query(collection(db, ATTENDEES_COLLECTION));
   return onSnapshot(
@@ -239,25 +169,22 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
       snapshot.forEach((docSnap) => {
         if (!deletedSet.has(docSnap.id)) {
           const raw = { id: docSnap.id, ...docSnap.data() } as Attendee;
-          const override = INITIAL_ATTENDEE_OVERRIDES[docSnap.id] || {};
-          mergedMap.set(docSnap.id, { ...raw, ...override });
+          mergedMap.set(docSnap.id, raw);
         }
       });
 
       // 2. Merge local records so offline / quota-limited writes are preserved
       Object.values(localMap).forEach((localAtt) => {
         if (deletedSet.has(localAtt.id)) return;
-        const override = INITIAL_ATTENDEE_OVERRIDES[localAtt.id] || {};
-        const mergedLocal = { ...localAtt, ...override };
         const remoteAtt = mergedMap.get(localAtt.id);
         if (!remoteAtt) {
-          mergedMap.set(localAtt.id, mergedLocal);
+          mergedMap.set(localAtt.id, localAtt);
         } else {
           // If local has newer update timestamp, prefer local
-          const localTime = mergedLocal.updatedAt || mergedLocal.registeredAt || '';
+          const localTime = localAtt.updatedAt || localAtt.registeredAt || '';
           const remoteTime = remoteAtt.updatedAt || remoteAtt.registeredAt || '';
           if (localTime >= remoteTime) {
-            mergedMap.set(localAtt.id, { ...remoteAtt, ...mergedLocal });
+            mergedMap.set(localAtt.id, { ...remoteAtt, ...localAtt });
           }
         }
       });

@@ -755,7 +755,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                   ฐานข้อมูลผู้ใช้กลุ่มที่ 1 : ลงทะเบียนล่วงหน้า
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                  เก็บข้อมูล 6 คอลัมน์หลัก: <strong className="text-slate-700 font-semibold">รหัส, ชื่อ, ตำแหน่ง, ชื่อสถานศึกษา(ถ้ามี), เบอร์โทรศัพท์, อีเมล</strong> ผ่านการอัปโหลดไฟล์ Excel
+                  เก็บข้อมูล 6 คอลัมน์หลัก: <strong className="text-slate-700 font-semibold">รหัส, ชื่อ, ตำแหน่ง, ชื่อสถานศึกษา(ถ้ามี), เบอร์โทรศัพท์, อีเมล</strong> (นับ 1 รายชื่อ = 1 ผู้เข้าร่วม)
                 </p>
               </div>
             </div>

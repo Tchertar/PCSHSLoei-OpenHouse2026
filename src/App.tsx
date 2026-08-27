@@ -119,7 +119,6 @@ export default function App() {
         setAdmins(firestoreData);
       } else {
         setAdmins(DEFAULT_SYSTEM_ADMINS);
-        saveAllAdminsToFirestore(DEFAULT_SYSTEM_ADMINS);
       }
     });
 
