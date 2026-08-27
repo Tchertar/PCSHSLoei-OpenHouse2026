@@ -26,6 +26,8 @@ import {
   Eye,
   ShieldCheck,
   Filter,
+  Building2,
+  Users,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
@@ -39,6 +41,7 @@ import {
   subscribeAttendees,
   formatThaiPhoneNumber,
 } from '../lib/firebase';
+import { CoordinatorsManagementTab } from './CoordinatorsManagementTab';
 
 interface AdminScannerPageProps {
   onBackToHome: () => void;
@@ -76,6 +79,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   attendees: initialAttendees = [],
   onAddAttendee,
 }) => {
+  const [activeGroupTab, setActiveGroupTab] = useState<'group1' | 'group2'>('group1');
   const [attendeesList, setAttendeesList] = useState<Attendee[]>(initialAttendees);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
@@ -695,36 +699,55 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     <div className="min-h-screen bg-slate-50 text-slate-900 font-['Prompt',sans-serif] flex flex-col justify-between">
       {/* Top Sticky Header */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={onBackToHome}
-            className="flex items-center gap-2 px-3.5 py-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-xs sm:text-sm transition-colors cursor-pointer shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>กลับสู่หน้าหลัก</span>
+            <span className="hidden sm:inline">กลับสู่หน้าหลัก</span>
+            <span className="sm:hidden">กลับ</span>
           </button>
 
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs">
+          {/* Group Switcher Tabs in Header */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+            <button
+              type="button"
+              id="tab-group-1-attendees"
+              onClick={() => setActiveGroupTab('group1')}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                activeGroupTab === 'group1'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
               <FileSpreadsheet className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-sm sm:text-base text-slate-900">
-                  ฐานข้อมูลกลุ่มที่ 1 : ลงทะเบียนล่วงหน้า
-                </span>
-                <span className="hidden sm:inline-block px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-bold rounded-md border border-blue-200">
-                  Pre-registered
-                </span>
-              </div>
-            </div>
+              <span>กลุ่มที่ 1 : ลงทะเบียนล่วงหน้า</span>
+              <span className={`hidden md:inline-block px-1.5 py-0.2 text-[10px] rounded-md ${activeGroupTab === 'group1' ? 'bg-blue-700/80 text-blue-100' : 'bg-slate-200 text-slate-600'}`}>
+                {attendeesList.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              id="tab-group-2-coordinators"
+              onClick={() => setActiveGroupTab('group2')}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                activeGroupTab === 'group2'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>กลุ่มที่ 2 : ผู้ประสานงาน</span>
+            </button>
           </div>
 
           <button
             type="button"
             onClick={onBackToHome}
-            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-2 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
             title="หน้าแรก"
           >
             <Home className="w-5 h-5" />
@@ -735,8 +758,13 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
       {/* Main Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         
-        {/* Top Overview & Excel Control Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
+        {/* If Group 2 is active, render CoordinatorsManagementTab */}
+        {activeGroupTab === 'group2' ? (
+          <CoordinatorsManagementTab />
+        ) : (
+          <>
+            {/* Top Overview & Excel Control Card */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-7 shadow-sm space-y-6">
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
             <div className="flex items-start gap-4">
@@ -1179,6 +1207,8 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             </table>
           </div>
         </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}

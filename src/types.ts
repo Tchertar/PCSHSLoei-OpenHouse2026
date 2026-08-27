@@ -51,6 +51,20 @@ export interface Attendee {
   updatedAt?: string; // เวลาอัปเดตข้อมูลล่าสุด
 }
 
+export interface Coordinator {
+  id: string;
+  code: string; // รหัส
+  school: string; // โรงเรียน
+  name: string; // ชื่อผู้ประสานงาน
+  phone: string; // เบอร์โทรศัพท์ (มีเลข 0 นำหน้า 10 หลัก)
+  email?: string;
+  notes?: string;
+  checkedIn: boolean;
+  checkedInAt?: string;
+  registeredAt?: string;
+  updatedAt?: string;
+}
+
 export type AdminRole = 'super_admin' | 'admin';
 
 export interface AdminUser {

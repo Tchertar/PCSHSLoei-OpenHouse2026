@@ -10,7 +10,7 @@ import {
   getDocs,
   getDocFromServer
 } from 'firebase/firestore';
-import { ActivityItem, AdminUser, Attendee, AuditLog } from '../types';
+import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -18,6 +18,7 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
 
 const ATTENDEES_COLLECTION = 'attendees';
+const COORDINATORS_COLLECTION = 'coordinators';
 const ADMINS_COLLECTION = 'admins';
 const ACTIVITIES_COLLECTION = 'activities';
 const AUDIT_LOGS_COLLECTION = 'audit_logs';
@@ -359,6 +360,143 @@ export const deleteAdminFromFirestore = async (id: string) => {
     await deleteDoc(doc(db, ADMINS_COLLECTION, id));
   } catch (err) {
     console.warn('Note: Could not delete admin from remote Firestore:', err);
+  }
+};
+
+// --- COORDINATORS (กลุ่มที่ 2 : ผู้ประสานงาน) ---
+export const subscribeCoordinators = (callback: (data: Coordinator[]) => void) => {
+  const q = query(collection(db, COORDINATORS_COLLECTION));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: Coordinator[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Coordinator);
+      });
+      try {
+        localStorage.setItem('pcshs_coordinators', JSON.stringify(list));
+      } catch {}
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore coordinators subscription note:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_coordinators');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
+};
+
+export const saveCoordinatorToFirestore = async (coordinator: Coordinator) => {
+  const codeStr = (coordinator.code || '').trim();
+  const nameStr = (coordinator.name || '').trim();
+  const docId =
+    coordinator.id ||
+    (codeStr
+      ? `coord_${codeStr.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')}`
+      : `coord_${nameStr.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_') || Date.now()}`);
+
+  const formattedPhone = formatThaiPhoneNumber(coordinator.phone);
+
+  const dataToSave: Coordinator = {
+    ...coordinator,
+    id: docId,
+    code: codeStr || docId,
+    phone: formattedPhone,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_coordinators');
+    let list: Coordinator[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((c) => c.id === docId);
+    if (idx >= 0) list[idx] = dataToSave;
+    else list.push(dataToSave);
+    localStorage.setItem('pcshs_coordinators', JSON.stringify(list));
+  } catch {}
+
+  try {
+    const docRef = doc(db, COORDINATORS_COLLECTION, docId);
+    await setDoc(docRef, dataToSave, { merge: true });
+    return docId;
+  } catch (err) {
+    console.warn('Note: Could not save coordinator to Firestore remote, saved locally:', err);
+    return docId;
+  }
+};
+
+export const saveAllCoordinatorsToFirestore = async (
+  coordinatorsList: Coordinator[],
+  replaceExisting: boolean = false
+) => {
+  try {
+    if (replaceExisting) {
+      await clearAllCoordinatorsFromFirestore();
+    }
+    for (const coord of coordinatorsList) {
+      await saveCoordinatorToFirestore(coord);
+    }
+  } catch (err) {
+    console.error('Error bulk saving coordinators to Firestore:', err);
+  }
+};
+
+export const deleteCoordinatorFromFirestore = async (id: string) => {
+  try {
+    const raw = localStorage.getItem('pcshs_coordinators');
+    if (raw) {
+      const list: Coordinator[] = JSON.parse(raw);
+      localStorage.setItem('pcshs_coordinators', JSON.stringify(list.filter((c) => c.id !== id)));
+    }
+  } catch {}
+
+  try {
+    await deleteDoc(doc(db, COORDINATORS_COLLECTION, id));
+  } catch (err) {
+    console.warn('Note: Could not delete coordinator from remote Firestore:', err);
+  }
+};
+
+export const clearAllCoordinatorsFromFirestore = async () => {
+  try {
+    localStorage.removeItem('pcshs_coordinators');
+    const q = query(collection(db, COORDINATORS_COLLECTION));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map((docSnap) =>
+      deleteDoc(doc(db, COORDINATORS_COLLECTION, docSnap.id)).catch(() => {})
+    );
+    await Promise.all(deletePromises);
+  } catch (err) {
+    console.warn('Error clearing coordinators from Firestore:', err);
+  }
+};
+
+export const updateCoordinatorCheckInStatus = async (id: string, checkedIn: boolean) => {
+  const checkedInAt = checkedIn ? new Date().toISOString() : undefined;
+  const updateData = {
+    checkedIn,
+    checkedInAt: checkedInAt || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_coordinators');
+    if (raw) {
+      const list: Coordinator[] = JSON.parse(raw);
+      const idx = list.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...updateData } as Coordinator;
+        localStorage.setItem('pcshs_coordinators', JSON.stringify(list));
+      }
+    }
+  } catch {}
+
+  try {
+    const docRef = doc(db, COORDINATORS_COLLECTION, id);
+    await setDoc(docRef, updateData, { merge: true });
+  } catch (err) {
+    console.warn('Note: Could not update coordinator check-in on Firestore remote:', err);
   }
 };
 
