@@ -23,6 +23,8 @@ import {
   Printer,
   Copy,
   Users,
+  Building2,
+  GraduationCap,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { QRCodeSVG } from 'qrcode.react';
@@ -56,6 +58,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
     prefix: 'นาย',
     customPrefix: '',
     fullName: '',
+    school: '',
     phone: '',
     email: '',
   });
@@ -93,6 +96,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         item.code?.toLowerCase().includes(q) ||
         item.fullName?.toLowerCase().includes(q) ||
         item.prefix?.toLowerCase().includes(q) ||
+        item.school?.toLowerCase().includes(q) ||
         item.phone?.toLowerCase().includes(q) ||
         item.email?.toLowerCase().includes(q)
       );
@@ -114,6 +118,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
       prefix: 'นาย',
       customPrefix: '',
       fullName: '',
+      school: '',
       phone: '',
       email: '',
     });
@@ -131,7 +136,8 @@ export const NewUserRegistrationsTab: React.FC = () => {
       prefix: isStandardPrefix ? item.prefix : 'อื่นๆ',
       customPrefix: isStandardPrefix ? '' : item.prefix,
       fullName: item.fullName,
-      phone: item.phone,
+      school: item.school || '',
+      phone: item.phone || '',
       email: item.email || '',
     });
     setFormError('');
@@ -146,6 +152,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
 
     const finalPrefix = formData.prefix === 'อื่นๆ' ? formData.customPrefix.trim() : formData.prefix.trim();
     const finalFullName = formData.fullName.trim();
+    const finalSchool = formData.school.trim();
     const finalCode = formData.code.trim() || getNextNewUserCode(usersList);
     const finalPhone = formData.phone.trim();
     const finalEmail = formData.email.trim();
@@ -164,6 +171,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         code: finalCode,
         prefix: finalPrefix,
         fullName: finalFullName,
+        school: finalSchool,
         phone: finalPhone,
         email: finalEmail,
         checkedIn: editingUser ? editingUser.checkedIn : true, // เมื่อเพิ่มใหม่ให้สถานะเป็นเช็คอินแล้วทันที
@@ -229,6 +237,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         'รหัส': 'OH47001',
         'คำนำหน้าชื่อ': 'นาย',
         'ชื่อ-สกุล': 'สมศักดิ์ รักการเรียน',
+        'โรงเรียน/สังกัด': 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
         'เบอร์โทรศัพท์': '0812345678',
         'Email': 'somsak@example.com',
       },
@@ -236,6 +245,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         'รหัส': 'OH47002',
         'คำนำหน้าชื่อ': 'นางสาว',
         'ชื่อ-สกุล': 'ใจดี มีสุข',
+        'โรงเรียน/สังกัด': 'โรงเรียนเลยพิทยาคม',
         'เบอร์โทรศัพท์': '0898765432',
         'Email': 'jaidee@example.com',
       },
@@ -243,6 +253,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         'รหัส': 'OH47003',
         'คำนำหน้าชื่อ': 'ด.ช.',
         'ชื่อ-สกุล': 'เก่งกล้า ปัญญาไว',
+        'โรงเรียน/สังกัด': 'โรงเรียนเมืองเลย',
         'เบอร์โทรศัพท์': '0901234567',
         'Email': '',
       },
@@ -251,7 +262,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
     const worksheet = XLSX.utils.json_to_sheet(templateData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'ลงทะเบียนผู้ใช้ใหม่');
-    worksheet['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 18 }, { wch: 28 }];
+    worksheet['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 28 }, { wch: 36 }, { wch: 18 }, { wch: 28 }];
     XLSX.writeFile(workbook, 'Template_กลุ่ม3_ลงทะเบียนผู้ใช้ใหม่_OH47001.xlsx');
   };
 
@@ -267,6 +278,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
       'รหัส': item.code,
       'คำนำหน้าชื่อ': item.prefix || '',
       'ชื่อ-สกุล': item.fullName || '',
+      'โรงเรียน/สังกัด': item.school || '',
       'เบอร์โทรศัพท์': item.phone || '',
       'Email': item.email || '',
       'สถานะการเช็คอิน': item.checkedIn ? 'เช็คอินแล้ว' : 'ยังไม่เช็คอิน',
@@ -282,6 +294,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
       { wch: 14 },
       { wch: 14 },
       { wch: 28 },
+      { wch: 34 },
       { wch: 18 },
       { wch: 28 },
       { wch: 16 },
@@ -314,6 +327,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
       let codeIdx = -1;
       let prefixIdx = -1;
       let nameIdx = -1;
+      let schoolIdx = -1;
       let phoneIdx = -1;
       let emailIdx = -1;
 
@@ -323,6 +337,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         if (text.includes('รหัส') || text.includes('code') || text.includes('id')) codeIdx = idx;
         else if (text.includes('คำนำหน้า') || text.includes('prefix') || text.includes('title')) prefixIdx = idx;
         else if (text.includes('ชื่อ') || text.includes('name') || text.includes('ผู้ใช้')) nameIdx = idx;
+        else if (text.includes('โรงเรียน') || text.includes('สังกัด') || text.includes('school') || text.includes('organization') || text.includes('หน่วยงาน')) schoolIdx = idx;
         else if (text.includes('โทร') || text.includes('phone') || text.includes('tel') || text.includes('mobile')) phoneIdx = idx;
         else if (text.includes('email') || text.includes('อีเมล') || text.includes('mail')) emailIdx = idx;
       });
@@ -331,8 +346,9 @@ export const NewUserRegistrationsTab: React.FC = () => {
       if (codeIdx === -1) codeIdx = 0;
       if (prefixIdx === -1 && rows[1]?.length > 1) prefixIdx = 1;
       if (nameIdx === -1) nameIdx = prefixIdx !== -1 ? 2 : 1;
-      if (phoneIdx === -1) phoneIdx = 3;
-      if (emailIdx === -1) emailIdx = 4;
+      if (schoolIdx === -1) schoolIdx = 3;
+      if (phoneIdx === -1) phoneIdx = 4;
+      if (emailIdx === -1) emailIdx = 5;
 
       const importedItems: NewUserRegistration[] = [];
       let currentMaxCode = usersList.length > 0 ? getNextNewUserCode(usersList) : 'OH47001';
@@ -347,6 +363,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
         let rawCode = row[codeIdx] !== undefined ? String(row[codeIdx]).trim() : '';
         let rawPrefix = row[prefixIdx] !== undefined ? String(row[prefixIdx]).trim() : '';
         let rawName = row[nameIdx] !== undefined ? String(row[nameIdx]).trim() : '';
+        let rawSchool = schoolIdx !== -1 && row[schoolIdx] !== undefined ? String(row[schoolIdx]).trim() : '';
         let rawPhone = row[phoneIdx] !== undefined ? String(row[phoneIdx]).trim() : '';
         let rawEmail = row[emailIdx] !== undefined ? String(row[emailIdx]).trim() : '';
 
@@ -366,6 +383,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
           code: rawCode,
           prefix: rawPrefix || 'นาย',
           fullName: rawName,
+          school: rawSchool,
           phone: formattedPhone,
           email: rawEmail,
           checkedIn: true, // เมื่อนำเข้าหรือเพิ่มให้สถานะเป็นเช็คอินแล้วทันที
@@ -423,7 +441,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                ฟอร์มบันทึกข้อมูลผู้เข้าร่วมงาน / ผู้ใช้ใหม่หน้างาน (รหัส OH47001, คำนำหน้า, ชื่อ-สกุล, เบอร์โทร, Email)
+                ฟอร์มบันทึกข้อมูลผู้เข้าร่วมงาน / ผู้ใช้ใหม่หน้างาน (รหัส OH47001, คำนำหน้า, ชื่อ-สกุล, โรงเรียน/สังกัด, เบอร์โทร, Email)
               </p>
             </div>
           </div>
@@ -638,6 +656,9 @@ export const NewUserRegistrationsTab: React.FC = () => {
                   ชื่อ - สกุล
                 </th>
                 <th scope="col" className="px-4 py-3.5">
+                  โรงเรียน / สังกัด
+                </th>
+                <th scope="col" className="px-4 py-3.5">
                   เบอร์โทรศัพท์
                 </th>
                 <th scope="col" className="px-4 py-3.5">
@@ -672,6 +693,18 @@ export const NewUserRegistrationsTab: React.FC = () => {
                       <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span>{item.fullName}</span>
                     </div>
+                  </td>
+
+                  {/* โรงเรียน/สังกัด */}
+                  <td className="px-4 py-3 text-slate-700">
+                    {item.school ? (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <GraduationCap className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="font-medium line-clamp-1" title={item.school}>{item.school}</span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
                   </td>
 
                   {/* เบอร์โทรศัพท์ */}
@@ -762,7 +795,7 @@ export const NewUserRegistrationsTab: React.FC = () => {
 
               {filteredUsers.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <UserPlus className="w-8 h-8 text-slate-300" />
                       <p className="text-sm font-medium">ไม่พบข้อมูลผู้ใช้ใหม่</p>
@@ -825,9 +858,15 @@ export const NewUserRegistrationsTab: React.FC = () => {
                       {lastCreatedUser.code}
                     </span>
                   </div>
-                  <p className="text-xs text-emerald-700">
+                  <p className="text-xs text-emerald-700 font-semibold">
                     {lastCreatedUser.prefix} {lastCreatedUser.fullName}
                   </p>
+                  {lastCreatedUser.school && (
+                    <p className="text-xs text-emerald-800 flex items-center justify-center gap-1">
+                      <GraduationCap className="w-3.5 h-3.5" />
+                      <span>{lastCreatedUser.school}</span>
+                    </p>
+                  )}
                   {lastCreatedUser.phone && (
                     <p className="text-xs text-slate-600 font-mono">
                       เบอร์โทร: {lastCreatedUser.phone}
@@ -953,7 +992,24 @@ export const NewUserRegistrationsTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 4. เบอร์โทรศัพท์ & Email */}
+                {/* 4. โรงเรียน / สังกัด */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    โรงเรียน / สังกัด
+                  </label>
+                  <div className="relative">
+                    <GraduationCap className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={formData.school}
+                      onChange={(e) => setFormData({ ...formData, school: e.target.value })}
+                      placeholder="เช่น โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย หรือ บุคคลทั่วไป"
+                      className="w-full pl-9.5 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 5. เบอร์โทรศัพท์ & Email */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -1054,6 +1110,11 @@ export const NewUserRegistrationsTab: React.FC = () => {
                 PCSHS Loei Open House 2026
               </div>
               <div className="text-lg font-black">{selectedUserForQr.prefix} {selectedUserForQr.fullName}</div>
+              {selectedUserForQr.school && (
+                <div className="text-xs text-emerald-100/90 font-medium px-2 py-0.5 bg-white/10 rounded-lg">
+                  {selectedUserForQr.school}
+                </div>
+              )}
               
               <div className="bg-white p-3 rounded-xl inline-block shadow-inner">
                 <QRCodeSVG

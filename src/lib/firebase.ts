@@ -10,7 +10,7 @@ import {
   getDocs,
   getDocFromServer
 } from 'firebase/firestore';
-import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration } from '../types';
+import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration, SchoolStudent } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
@@ -19,6 +19,7 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(defa
 
 const ATTENDEES_COLLECTION = 'attendees';
 const COORDINATORS_COLLECTION = 'coordinators';
+const SCHOOL_STUDENTS_COLLECTION = 'school_students';
 const NEW_REGISTRATIONS_COLLECTION = 'new_registrations';
 const ADMINS_COLLECTION = 'admins';
 const ACTIVITIES_COLLECTION = 'activities';
@@ -498,6 +499,172 @@ export const updateCoordinatorCheckInStatus = async (id: string, checkedIn: bool
     await setDoc(docRef, updateData, { merge: true });
   } catch (err) {
     console.warn('Note: Could not update coordinator check-in on Firestore remote:', err);
+  }
+};
+
+// --- SCHOOL STUDENTS / PARTICIPANTS BY SCHOOL (รายชื่อนักเรียน/ผู้เข้าร่วมของแต่ละโรงเรียนของผู้ประสานงาน) ---
+export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => void) => {
+  const q = query(collection(db, SCHOOL_STUDENTS_COLLECTION));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const list: SchoolStudent[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as SchoolStudent);
+      });
+      try {
+        localStorage.setItem('pcshs_school_students', JSON.stringify(list));
+      } catch {}
+      callback(list);
+    },
+    (err) => {
+      console.warn('Firestore school students subscription fallback:', err);
+      try {
+        const raw = localStorage.getItem('pcshs_school_students');
+        if (raw) callback(JSON.parse(raw));
+      } catch {}
+    }
+  );
+};
+
+export const saveSchoolStudentToFirestore = async (student: SchoolStudent) => {
+  const codeSafe = (student.code || '').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+  const nameSafe = `${student.firstName || ''}_${student.lastName || ''}`.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+  const coordSafe = (student.coordinatorId || 'gen').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+  
+  const docId = student.id || `stu_${coordSafe}_${codeSafe || nameSafe || Date.now()}`;
+  const dataToSave: SchoolStudent = {
+    ...student,
+    id: docId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    let list: SchoolStudent[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((s) => s.id === docId);
+    if (idx >= 0) list[idx] = dataToSave;
+    else list.push(dataToSave);
+    localStorage.setItem('pcshs_school_students', JSON.stringify(list));
+  } catch {}
+
+  try {
+    const docRef = doc(db, SCHOOL_STUDENTS_COLLECTION, docId);
+    await setDoc(docRef, dataToSave, { merge: true });
+    return docId;
+  } catch (err) {
+    console.warn('Note: Could not save student to Firestore remote, saved locally:', err);
+    return docId;
+  }
+};
+
+export const saveAllSchoolStudentsToFirestore = async (
+  studentsList: SchoolStudent[],
+  coordinatorId?: string,
+  replaceExisting: boolean = false
+) => {
+  try {
+    if (replaceExisting && coordinatorId) {
+      await clearSchoolStudentsByCoordinator(coordinatorId);
+    }
+    for (const student of studentsList) {
+      await saveSchoolStudentToFirestore(student);
+    }
+  } catch (err) {
+    console.error('Error bulk saving school students:', err);
+  }
+};
+
+export const deleteSchoolStudentFromFirestore = async (id: string) => {
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    if (raw) {
+      const list: SchoolStudent[] = JSON.parse(raw);
+      localStorage.setItem('pcshs_school_students', JSON.stringify(list.filter((s) => s.id !== id)));
+    }
+  } catch {}
+
+  try {
+    await deleteDoc(doc(db, SCHOOL_STUDENTS_COLLECTION, id));
+  } catch (err) {
+    console.warn('Note: Could not delete student from Firestore:', err);
+  }
+};
+
+export const clearSchoolStudentsByCoordinator = async (coordinatorId: string) => {
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    if (raw) {
+      const list: SchoolStudent[] = JSON.parse(raw);
+      localStorage.setItem(
+        'pcshs_school_students',
+        JSON.stringify(list.filter((s) => s.coordinatorId !== coordinatorId))
+      );
+    }
+    const q = query(collection(db, SCHOOL_STUDENTS_COLLECTION));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs
+      .filter((d) => d.data().coordinatorId === coordinatorId)
+      .map((d) => deleteDoc(doc(db, SCHOOL_STUDENTS_COLLECTION, d.id)).catch(() => {}));
+    await Promise.all(deletePromises);
+  } catch (err) {
+    console.warn('Error clearing school students for coordinator:', err);
+  }
+};
+
+export const toggleStudentAttendanceInFirestore = async (id: string, attended: boolean) => {
+  const attendedAt = attended ? new Date().toISOString() : undefined;
+  const updateData = {
+    attended,
+    attendedAt: attendedAt || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    if (raw) {
+      const list: SchoolStudent[] = JSON.parse(raw);
+      const idx = list.findIndex((s) => s.id === id);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...updateData } as SchoolStudent;
+        localStorage.setItem('pcshs_school_students', JSON.stringify(list));
+      }
+    }
+  } catch {}
+
+  try {
+    const docRef = doc(db, SCHOOL_STUDENTS_COLLECTION, id);
+    await setDoc(docRef, updateData, { merge: true });
+  } catch (err) {
+    console.warn('Note: Could not update student attendance:', err);
+  }
+};
+
+export const batchUpdateSchoolStudentsAttendance = async (studentIds: string[], attended: boolean) => {
+  const attendedAt = attended ? new Date().toISOString() : undefined;
+  const updateData = {
+    attended,
+    attendedAt: attendedAt || null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    if (raw) {
+      const list: SchoolStudent[] = JSON.parse(raw);
+      const updated = list.map((s) => (studentIds.includes(s.id) ? { ...s, ...updateData } : s));
+      localStorage.setItem('pcshs_school_students', JSON.stringify(updated));
+    }
+  } catch {}
+
+  try {
+    const promises = studentIds.map((id) => {
+      const docRef = doc(db, SCHOOL_STUDENTS_COLLECTION, id);
+      return setDoc(docRef, updateData, { merge: true }).catch(() => {});
+    });
+    await Promise.all(promises);
+  } catch (err) {
+    console.warn('Error batch updating students attendance:', err);
   }
 };
 

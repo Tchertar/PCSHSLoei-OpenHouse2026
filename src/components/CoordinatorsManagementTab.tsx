@@ -24,12 +24,14 @@ import {
   Edit2,
   Building2,
   Users,
+  GraduationCap,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
-import { Coordinator } from '../types';
+import { Coordinator, SchoolStudent } from '../types';
 import {
   subscribeCoordinators,
+  subscribeSchoolStudents,
   saveCoordinatorToFirestore,
   saveAllCoordinatorsToFirestore,
   deleteCoordinatorFromFirestore,
@@ -37,9 +39,11 @@ import {
   updateCoordinatorCheckInStatus,
   formatThaiPhoneNumber,
 } from '../lib/firebase';
+import { SchoolStudentsModal } from './SchoolStudentsModal';
 
 export const CoordinatorsManagementTab: React.FC = () => {
   const [coordinatorsList, setCoordinatorsList] = useState<Coordinator[]>([]);
+  const [allStudentsList, setAllStudentsList] = useState<SchoolStudent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
   const [isImporting, setIsImporting] = useState(false);
@@ -48,6 +52,7 @@ export const CoordinatorsManagementTab: React.FC = () => {
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingCoordinator, setEditingCoordinator] = useState<Coordinator | null>(null);
+  const [managingStudentsCoordinator, setManagingStudentsCoordinator] = useState<Coordinator | null>(null);
   const [viewingQr, setViewingQr] = useState<Coordinator | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
@@ -61,14 +66,22 @@ export const CoordinatorsManagementTab: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Subscribe to live coordinators
+  // Subscribe to live coordinators & students
   useEffect(() => {
-    const unsub = subscribeCoordinators((data) => {
+    const unsubCoords = subscribeCoordinators((data) => {
       if (data) {
         setCoordinatorsList(data);
       }
     });
-    return () => unsub();
+    const unsubStudents = subscribeSchoolStudents((data) => {
+      if (data) {
+        setAllStudentsList(data);
+      }
+    });
+    return () => {
+      unsubCoords();
+      unsubStudents();
+    };
   }, []);
 
   // Filtered Coordinators
@@ -725,6 +738,7 @@ export const CoordinatorsManagementTab: React.FC = () => {
                 <th className="px-4 py-3.5 whitespace-nowrap">2. โรงเรียน</th>
                 <th className="px-4 py-3.5 whitespace-nowrap">3. ชื่อผู้ประสานงาน</th>
                 <th className="px-4 py-3.5 whitespace-nowrap">4. เบอร์โทรศัพท์</th>
+                <th className="px-4 py-3.5 whitespace-nowrap">5. รายชื่อนักเรียน (Excel / เช็คชื่อ)</th>
                 <th className="px-4 py-3.5 text-center whitespace-nowrap">สถานะเช็คอิน</th>
                 <th className="px-4 py-3.5 text-center whitespace-nowrap">การจัดการ</th>
               </tr>
@@ -732,7 +746,7 @@ export const CoordinatorsManagementTab: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
                     <div className="max-w-xs mx-auto space-y-2">
                       <School className="w-8 h-8 mx-auto text-slate-300" />
                       <p className="font-semibold text-slate-600">ยังไม่พบข้อมูลผู้ประสานงาน</p>
@@ -781,6 +795,40 @@ export const CoordinatorsManagementTab: React.FC = () => {
                       ) : (
                         <span className="text-slate-400">-</span>
                       )}
+                    </td>
+
+                    {/* 5. รายชื่อนักเรียนของผู้ประสานงาน / โรงเรียนนี้ (Excel) */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {(() => {
+                        const myStudents = allStudentsList.filter(
+                          (s) =>
+                            s.coordinatorId === coord.id ||
+                            (coord.school && s.school && s.school.trim() === coord.school.trim())
+                        );
+                        const count = myStudents.length;
+                        const attended = myStudents.filter((s) => s.attended).length;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setManagingStudentsCoordinator(coord)}
+                            className="px-3 py-1.5 bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 hover:from-purple-100 hover:to-indigo-100 text-purple-900 border border-purple-200/90 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center gap-2 shadow-2xs group"
+                            title="คลิกเพื่อเพิ่มรายชื่อผู้เข้าร่วมของโรงเรียนตัวเอง (Excel) หรือเช็คชื่อนักเรียน"
+                          >
+                            <GraduationCap className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform shrink-0" />
+                            <div className="text-left">
+                              <div className="flex items-center gap-1.5">
+                                <span>{count > 0 ? `นักเรียน (${count} คน)` : '+ เพิ่มรายชื่อ (Excel)'}</span>
+                              </div>
+                              {count > 0 && (
+                                <p className="text-[10px] font-medium text-purple-600">
+                                  มาแล้ว <span className="font-bold text-emerald-600">{attended}</span>/{count} คน
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     {/* สถานะเช็คอิน */}
@@ -1038,6 +1086,14 @@ export const CoordinatorsManagementTab: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal 3: School Students Management (Excel & Attendance) */}
+      {managingStudentsCoordinator && (
+        <SchoolStudentsModal
+          coordinator={managingStudentsCoordinator}
+          onClose={() => setManagingStudentsCoordinator(null)}
+        />
       )}
     </div>
   );

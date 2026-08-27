@@ -29,6 +29,7 @@ import {
   Filter,
   Building2,
   Users,
+  Edit2,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
@@ -90,6 +91,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingAttendee, setEditingAttendee] = useState<Attendee | null>(null);
   const [viewingAttendeeQr, setViewingAttendeeQr] = useState<Attendee | null>(null);
   const [createdAttendee, setCreatedAttendee] = useState<Attendee | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -634,7 +636,61 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     }
   };
 
-  // 7. Single Form Submit
+  // Open Add modal
+  const handleOpenAddAttendee = () => {
+    setEditingAttendee(null);
+    setCreatedAttendee(null);
+    setCustomCode('');
+    setPrefix('นาย');
+    setCustomPrefix('');
+    setFullNameInput('');
+    setPosition('ครู/อาจารย์');
+    setCustomPosition('');
+    setSchoolName('');
+    setPhone('');
+    setEmail('');
+    setFormError('');
+    setIsAddModalOpen(true);
+  };
+
+  // Open Edit modal
+  const handleOpenEditAttendee = (att: Attendee) => {
+    setEditingAttendee(att);
+    setCreatedAttendee(null);
+    setCustomCode(att.participantCode || '');
+    
+    if (PREFIX_OPTIONS.includes(att.prefix || '')) {
+      setPrefix(att.prefix || 'นาย');
+      setCustomPrefix('');
+    } else if (att.prefix) {
+      setPrefix('อื่นๆ (ระบุเอง)');
+      setCustomPrefix(att.prefix);
+    } else {
+      setPrefix('นาย');
+      setCustomPrefix('');
+    }
+
+    setFullNameInput(`${att.firstName || ''} ${att.lastName || ''}`.trim());
+
+    if (POSITION_OPTIONS.includes(att.position || '')) {
+      setPosition(att.position || 'ครู/อาจารย์');
+      setCustomPosition('');
+    } else if (att.position) {
+      setPosition('อื่นๆ (ระบุเอง)');
+      setCustomPosition(att.position);
+    } else {
+      setPosition('ครู/อาจารย์');
+      setCustomPosition('');
+    }
+
+    setSchoolName(att.schoolName || att.organization || '');
+    setPhone(att.phone || '');
+    setEmail(att.email || '');
+    setFormError('');
+    setIsAddModalOpen(true);
+  };
+
+  // 7. Single Form Submit (Add or Edit)
   const handleSingleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
@@ -663,8 +719,6 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
       const firstName = nameParts[0] || 'ผู้เข้าร่วม';
       const lastName = nameParts.slice(1).join(' ') || '-';
 
-      const nextCode = customCode.trim() || getNextConsecutiveParticipantCode(attendeesList);
-
       let mappedStatus: AttendeeStatus = 'บุคคลทั่วไป';
       if (finalPosition.includes('นักเรียน')) mappedStatus = 'นักเรียน';
       else if (
@@ -677,41 +731,69 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
         mappedStatus = 'ครู/อาจารย์';
       else if (finalPosition.includes('ผู้ปกครอง')) mappedStatus = 'ผู้ปกครอง';
 
-      const newAttendee: Attendee = {
-        id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        participantCode: nextCode,
-        prefix: finalPrefix,
-        firstName,
-        lastName,
-        position: finalPosition,
-        schoolName: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
-        organization: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
-        phone: cleanPhone,
-        email: email.trim().toLowerCase() || `${cleanPhone}@pcshs.ac.th`,
-        status: mappedStatus,
-        district: 'เมืองเลย',
-        province: 'เลย',
-        attendeeCount: 1,
-        transportMethod: 'รถส่วนตัว',
-        registeredAt: new Date().toISOString(),
-        checkedIn: false,
-        qrCodeData: nextCode,
-        registrationSource: 'admin_entry',
-      };
+      if (editingAttendee) {
+        // UPDATE EXISTING ATTENDEE
+        const updatedCode = customCode.trim() || editingAttendee.participantCode || editingAttendee.id;
+        const updatedAttendee: Attendee = {
+          ...editingAttendee,
+          participantCode: updatedCode,
+          prefix: finalPrefix,
+          firstName,
+          lastName,
+          position: finalPosition,
+          schoolName: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
+          organization: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
+          phone: cleanPhone,
+          email: email.trim().toLowerCase() || `${cleanPhone}@pcshs.ac.th`,
+          status: mappedStatus,
+          qrCodeData: updatedCode,
+          updatedAt: new Date().toISOString(),
+        };
 
-      await saveAttendeeToFirestore(newAttendee);
-      setAttendeesList((prev) => [newAttendee, ...prev]);
+        await saveAttendeeToFirestore(updatedAttendee);
+        setAttendeesList((prev) => prev.map((a) => (a.id === editingAttendee.id ? updatedAttendee : a)));
 
-      if (onAddAttendee) onAddAttendee(newAttendee);
+        setCreatedAttendee(updatedAttendee);
+        setIsSubmitting(false);
+      } else {
+        // CREATE NEW ATTENDEE
+        const nextCode = customCode.trim() || getNextConsecutiveParticipantCode(attendeesList);
+        const newAttendee: Attendee = {
+          id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          participantCode: nextCode,
+          prefix: finalPrefix,
+          firstName,
+          lastName,
+          position: finalPosition,
+          schoolName: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
+          organization: schoolName.trim() || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย',
+          phone: cleanPhone,
+          email: email.trim().toLowerCase() || `${cleanPhone}@pcshs.ac.th`,
+          status: mappedStatus,
+          district: 'เมืองเลย',
+          province: 'เลย',
+          attendeeCount: 1,
+          transportMethod: 'รถส่วนตัว',
+          registeredAt: new Date().toISOString(),
+          checkedIn: false,
+          qrCodeData: nextCode,
+          registrationSource: 'admin_entry',
+        };
 
-      setCreatedAttendee(newAttendee);
-      setIsSubmitting(false);
+        await saveAttendeeToFirestore(newAttendee);
+        setAttendeesList((prev) => [newAttendee, ...prev]);
 
-      try {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
-      } catch {}
+        if (onAddAttendee) onAddAttendee(newAttendee);
+
+        setCreatedAttendee(newAttendee);
+        setIsSubmitting(false);
+
+        try {
+          confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
+        } catch {}
+      }
     } catch (err: any) {
-      console.error('Error adding attendee:', err);
+      console.error('Error saving attendee:', err);
       setFormError(err?.message || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
       setIsSubmitting(false);
     }
@@ -876,16 +958,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
               {/* 4. Single Add Manual Button */}
               <button
                 type="button"
-                onClick={() => {
-                  setFullNameInput('');
-                  setPhone('');
-                  setEmail('');
-                  setSchoolName('');
-                  setCustomCode('');
-                  setFormError('');
-                  setCreatedAttendee(null);
-                  setIsAddModalOpen(true);
-                }}
+                onClick={handleOpenAddAttendee}
                 className="px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-xl border border-amber-200 transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4 text-amber-600" />
@@ -1231,6 +1304,16 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                       <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
+                          onClick={() => handleOpenEditAttendee(att)}
+                          className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-xs font-bold border border-amber-200/80 transition-colors cursor-pointer flex items-center gap-1"
+                          title="แก้ไขข้อมูลผู้เข้าร่วมนี้"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-amber-600" />
+                          <span>แก้ไข</span>
+                        </button>
+
+                        <button
+                          type="button"
                           onClick={() => setViewingAttendeeQr(att)}
                           className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 transition-colors cursor-pointer flex items-center gap-1"
                           title="ดู QR Code ประจำตัว"
@@ -1410,15 +1493,15 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             {!createdAttendee ? (
               <form onSubmit={handleSingleFormSubmit} className="space-y-4">
                 <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <UserPlus className="w-5 h-5" />
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${editingAttendee ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                    {editingAttendee ? <Edit2 className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
                   </div>
                   <div>
                     <h2 className="text-lg font-extrabold text-slate-900">
-                      เพิ่มข้อมูลผู้ลงทะเบียนล่วงหน้า
+                      {editingAttendee ? 'แก้ไขข้อมูลผู้ลงทะเบียนล่วงหน้า' : 'เพิ่มข้อมูลผู้ลงทะเบียนล่วงหน้า'}
                     </h2>
                     <p className="text-xs text-slate-500">
-                      กรอกข้อมูลตาม 6 ฟิลด์มาตรฐานเพื่อบันทึกลงฐานข้อมูล
+                      {editingAttendee ? `แก้ไขข้อมูลของ ${editingAttendee.firstName} ${editingAttendee.lastName}` : 'กรอกข้อมูลตาม 6 ฟิลด์มาตรฐานเพื่อบันทึกลงฐานข้อมูล'}
                     </p>
                   </div>
                 </div>
@@ -1433,7 +1516,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 {/* 1. รหัส (ถ้ามี/เว้นว่างให้อัตโนมัติ) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    1. รหัสประจำตัว <span className="text-slate-400 font-normal">(เว้นว่างเพื่อให้ระบบสร้างต่ออัตโนมัติ)</span>
+                    1. รหัสประจำตัว <span className="text-slate-400 font-normal">{editingAttendee ? '(รหัสประจำตัวเดิมหรือแก้ไขใหม่)' : '(เว้นว่างเพื่อให้ระบบสร้างต่ออัตโนมัติ)'}</span>
                   </label>
                   <input
                     type="text"
@@ -1563,9 +1646,13 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                    className={`px-5 py-2 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                      editingAttendee
+                        ? 'bg-amber-600 hover:bg-amber-700'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                   >
-                    {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
+                    {isSubmitting ? 'กำลังบันทึก...' : editingAttendee ? 'บันทึกการแก้ไข' : 'บันทึกข้อมูล'}
                   </button>
                 </div>
               </form>
@@ -1576,7 +1663,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 </div>
                 <div>
                   <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full border border-emerald-200">
-                    บันทึกข้อมูลสำเร็จ
+                    {editingAttendee ? 'อัปเดตข้อมูลสำเร็จ' : 'บันทึกข้อมูลสำเร็จ'}
                   </span>
                   <h3 className="text-base font-extrabold text-slate-900 mt-1.5">
                     {createdAttendee.prefix ? `${createdAttendee.prefix} ` : ''}
@@ -1592,23 +1679,28 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 </div>
 
                 <div className="flex items-center justify-center gap-2 pt-2">
+                  {!editingAttendee && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFullNameInput('');
+                        setPhone('');
+                        setEmail('');
+                        setSchoolName('');
+                        setCustomCode('');
+                        setCreatedAttendee(null);
+                      }}
+                      className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200"
+                    >
+                      เพิ่มท่านต่อไป
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
-                      setFullNameInput('');
-                      setPhone('');
-                      setEmail('');
-                      setSchoolName('');
-                      setCustomCode('');
-                      setCreatedAttendee(null);
+                      setIsAddModalOpen(false);
+                      setEditingAttendee(null);
                     }}
-                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200"
-                  >
-                    เพิ่มท่านต่อไป
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(false)}
                     className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl"
                   >
                     ปิดหน้าต่าง

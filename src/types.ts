@@ -65,11 +65,27 @@ export interface Coordinator {
   updatedAt?: string;
 }
 
+export interface SchoolStudent {
+  id: string;
+  coordinatorId: string; // รหัสอ้างอิงผู้ประสานงาน / โรงเรียน
+  school: string; // โรงเรียน
+  code: string; // รหัส
+  prefix: string; // คำนำหน้า (ด.ช., ด.ญ., นาย, นางสาว, อื่นๆ)
+  firstName: string; // ชื่อ
+  lastName: string; // นามสกุล
+  gradeLevel: string; // ระดับชั้น (เช่น ม.1, ม.2, ม.3, ม.4, ม.5, ม.6, ป.6 ฯลฯ)
+  attended: boolean; // เช็คบ็อกซ์ติ๊กว่ามาหรือไม่มา (true = มา, false = ไม่มา)
+  attendedAt?: string; // เวลาที่บันทึกว่ามา
+  registeredAt?: string;
+  updatedAt?: string;
+}
+
 export interface NewUserRegistration {
   id: string;
   code: string; // รหัส (เริ่มด้วย OH47001, OH47002, ...)
   prefix: string; // คำนำหน้าชื่อ (นาย, นาง, นางสาว, ด.ช., ด.หญิง, อื่นๆ)
   fullName: string; // ชื่อ-สกุล
+  school: string; // โรงเรียน/สังกัด
   phone: string; // เบอร์โทรศัพท์ (10 หลัก มี 0 นำหน้า)
   email: string; // Email
   checkedIn: boolean; // สถานะเป็นเช็คอินแล้วทันทีเมื่อเพิ่ม
