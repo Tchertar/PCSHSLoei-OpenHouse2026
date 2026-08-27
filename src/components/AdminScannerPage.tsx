@@ -297,29 +297,76 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
         let seqCounter = currentMaxSeq;
 
         rawRows.forEach((row, idx) => {
+          const rowKeys = Object.keys(row);
           const getValue = (...keys: string[]) => {
             for (const key of keys) {
-              const matchedKey = Object.keys(row).find(
-                (k) =>
-                  k.trim().toLowerCase() === key.trim().toLowerCase() ||
-                  k.toLowerCase().includes(key.toLowerCase())
-              );
-              if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== null) {
+              const kLower = key.trim().toLowerCase();
+              const matchedKey = rowKeys.find((k) => {
+                const targetK = k.trim().toLowerCase();
+                return (
+                  targetK === kLower ||
+                  targetK.replace(/[\s_\-()]/g, '') === kLower.replace(/[\s_\-()]/g, '') ||
+                  targetK.includes(kLower)
+                );
+              });
+              if (
+                matchedKey &&
+                row[matchedKey] !== undefined &&
+                row[matchedKey] !== null &&
+                String(row[matchedKey]).trim() !== ''
+              ) {
                 return String(row[matchedKey]).trim();
               }
             }
             return '';
           };
 
-          // 1. รหัส (Code)
-          let participantCode = getValue('รหัส', 'รหัสประจำตัว', 'Code', 'participantCode');
+          // 1. รหัส (Code) - check all possible headers
+          let participantCode = getValue(
+            'รหัส',
+            'รหัสประจำตัว',
+            'รหัสผู้ลงทะเบียน',
+            'รหัสผู้เข้าร่วม',
+            'รหัสผู้ใช้',
+            'เลขประจำตัว',
+            'Code',
+            'code',
+            'ID',
+            'id',
+            'Id',
+            'participantCode',
+            'user_id',
+            'ลำดับ',
+            'No',
+            'No.',
+            'no'
+          );
+
+          // If no matched header, check if the first column is a short code/identifier
+          if (!participantCode && rowKeys.length > 0) {
+            const firstVal = String(row[rowKeys[0]] || '').trim();
+            if (firstVal && !firstVal.includes(' ') && firstVal.length <= 30) {
+              participantCode = firstVal;
+            }
+          }
+
           if (!participantCode) {
             seqCounter += 1;
             participantCode = `PCSHS-${String(seqCounter).padStart(4, '0')}`;
           }
 
           // 2. ชื่อ (Name)
-          const rawName = getValue('ชื่อ', 'ชื่อ-สกุล', 'ชื่อ - นามสกุล', 'ชื่อผู้ลงทะเบียน', 'Name', 'FullName', 'firstName');
+          const rawName = getValue(
+            'ชื่อ',
+            'ชื่อ-สกุล',
+            'ชื่อ - นามสกุล',
+            'ชื่อผู้ลงทะเบียน',
+            'ชื่อ นามสกุล',
+            'Name',
+            'FullName',
+            'firstName',
+            'full_name'
+          );
           if (!rawName) return; // Skip empty row
 
           // Parse prefix, first name, last name
@@ -352,7 +399,8 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
           const lastName = nameParts.slice(1).join(' ') || '-';
 
           // 3. ตำแหน่ง (Position)
-          const rawPosition = getValue('ตำแหน่ง', 'Position', 'หน้าที่', 'role') || 'ผู้เข้าร่วมงาน';
+          const rawPosition =
+            getValue('ตำแหน่ง', 'Position', 'หน้าที่', 'สถานะ', 'role', 'status') || 'ผู้เข้าร่วมงาน';
 
           // Determine general AttendeeStatus
           let mappedStatus: AttendeeStatus = 'บุคคลทั่วไป';
@@ -372,11 +420,20 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
           // 4. ชื่อสถานศึกษา(ถ้ามี) (School Name)
           const rawSchool =
-            getValue('ชื่อสถานศึกษา(ถ้ามี)', 'ชื่อสถานศึกษา', 'สถานศึกษา', 'โรงเรียน', 'หน่วยงาน', 'สถาบัน', 'schoolName', 'organization') ||
-            'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย';
+            getValue(
+              'ชื่อสถานศึกษา(ถ้ามี)',
+              'ชื่อสถานศึกษา',
+              'สถานศึกษา',
+              'โรงเรียน',
+              'หน่วยงาน',
+              'สถาบัน',
+              'schoolName',
+              'organization',
+              'school'
+            ) || 'โรงเรียนวิทยาศาสตร์จุฬาภรณราชวิทยาลัย เลย';
 
           // 5. เบอร์โทรศัพท์ (Phone)
-          const rawPhone = getValue('เบอร์โทรศัพท์', 'เบอร์โทร', 'เบอร์ติดต่อ', 'Phone', 'tel', 'mobile');
+          const rawPhone = getValue('เบอร์โทรศัพท์', 'เบอร์โทร', 'เบอร์ติดต่อ', 'โทร', 'Phone', 'tel', 'mobile');
           const cleanPhone = rawPhone.replace(/[^0-9]/g, '') || '0000000000';
 
           // 6. อีเมล (Email)
@@ -385,8 +442,12 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             rawEmail = `${cleanPhone !== '0000000000' ? cleanPhone : `user_${idx + 1}`}@pcshs.ac.th`;
           }
 
+          const codeSafe = participantCode.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+          const nameSafe = `${firstName}_${lastName}`.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+          const uniqueId = `att_${codeSafe || nameSafe || idx}`;
+
           const newAtt: Attendee = {
-            id: `att_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            id: uniqueId,
             participantCode,
             prefix: parsedPrefix,
             firstName,
@@ -419,15 +480,30 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
           return;
         }
 
-        // Save batch to Firebase and local storage
-        await saveAllAttendeesToFirestore(newAttendees);
+        // Deduplicate imported batch by participantCode & name+phone
+        const seenCodes = new Set<string>();
+        const seenNames = new Set<string>();
+        const uniqueBatch: Attendee[] = [];
 
-        // Update local state list
-        setAttendeesList((prev) => [...newAttendees, ...prev]);
+        for (const att of newAttendees) {
+          const c = (att.participantCode || '').toLowerCase().trim();
+          const n = `${att.firstName}_${att.lastName}_${att.phone}`.toLowerCase().trim();
+          if (c && seenCodes.has(c)) continue;
+          if (seenNames.has(n)) continue;
+          if (c) seenCodes.add(c);
+          seenNames.add(n);
+          uniqueBatch.push(att);
+        }
+
+        // Replace and save cleanly to Firebase and local storage (prevent 114 duplicate items)
+        await saveAllAttendeesToFirestore(uniqueBatch, true);
+
+        // Update local state list with exact imported items
+        setAttendeesList(uniqueBatch);
 
         setImportNotice({
           type: 'success',
-          message: `นำเข้าข้อมูลสำเร็จทั้งหมด ${newAttendees.length} รายการ และบันทึกลงฐานข้อมูล Firebase เรียบร้อยแล้ว`,
+          message: `นำเข้าข้อมูลสำเร็จทั้งหมด ${uniqueBatch.length} รายการ (รหัสตรงตามไฟล์ Excel และไม่มีรายการซ้ำซ้อน)`,
         });
 
         // Trigger confetti
@@ -493,6 +569,40 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     setAttendeesList([]);
     await clearAllAttendeesFromFirestore();
     alert('ลบข้อมูลทั้งหมดเรียบร้อยแล้ว');
+  };
+
+  // 6.1 Deduplicate records immediately
+  const handleDeduplicate = async () => {
+    const seenCodes = new Set<string>();
+    const seenKeys = new Set<string>();
+    const uniqueList: Attendee[] = [];
+
+    for (const att of attendeesList) {
+      const code = (att.participantCode || '').trim().toLowerCase();
+      const key = `${att.firstName || ''}_${att.lastName || ''}_${att.phone || ''}`.trim().toLowerCase();
+      if (code && seenCodes.has(code)) continue;
+      if (key && key !== '__' && seenKeys.has(key)) continue;
+
+      if (code) seenCodes.add(code);
+      if (key && key !== '__') seenKeys.add(key);
+      uniqueList.push(att);
+    }
+
+    if (uniqueList.length === attendeesList.length) {
+      alert('ไม่พบรายการซ้ำซ้อนในระบบ ข้อมูลถูกต้องครบถ้วนแล้ว');
+      return;
+    }
+
+    const removedCount = attendeesList.length - uniqueList.length;
+    if (
+      window.confirm(
+        `พบรายการซ้ำซ้อน ${removedCount} รายการ ต้องการลบรายการที่ซ้ำออกทั้งหมดและอัปเดตฐานข้อมูลให้เหลือ ${uniqueList.length} รายการ หรือไม่?`
+      )
+    ) {
+      setAttendeesList(uniqueList);
+      await saveAllAttendeesToFirestore(uniqueList, true);
+      alert(`ลบรายการซ้ำซ้อนเรียบร้อยแล้ว คงเหลือข้อมูล ${uniqueList.length} รายการ`);
+    }
   };
 
   // 7. Single Form Submit
@@ -869,15 +979,27 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
               </div>
 
               {attendeesList.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearAll}
-                  className="px-2.5 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-                  title="ลบข้อมูลผู้เข้าร่วมทั้งหมด"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">ล้างฐานข้อมูล</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleDeduplicate}
+                    className="px-2.5 py-1.5 text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    title="ลบรายการซ้ำซ้อนและรักษารหัสจริงตามไฟล์"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-amber-600" />
+                    <span>ลบรายการซ้ำ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearAll}
+                    className="px-2.5 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                    title="ลบข้อมูลผู้เข้าร่วมทั้งหมด"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">ล้างฐานข้อมูล</span>
+                  </button>
+                </>
               )}
             </div>
           </div>

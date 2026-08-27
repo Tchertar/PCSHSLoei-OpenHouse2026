@@ -60,7 +60,6 @@ export const getNextConsecutiveParticipantCode = (attendeesList: Attendee[]): st
   let maxSeq = 0;
   for (const a of attendeesList) {
     if (!a.participantCode) continue;
-    // Extract number from PCSHS-0001, PCSHS2026-0001, PCSHS0001, etc.
     const match = a.participantCode.match(/PCSHS(?:2026)?[-_]?(\d+)/i);
     if (match && match[1]) {
       const num = parseInt(match[1], 10);
@@ -74,24 +73,38 @@ export const getNextConsecutiveParticipantCode = (attendeesList: Attendee[]): st
 };
 
 /**
- * Normalize and ensure all attendees have sequential codes: PCSHS-0001, PCSHS-0002, ...
+ * Ensures all attendees have valid participantCode and qrCodeData WITHOUT overwriting user-provided custom codes from Excel.
  */
 export const resequenceAllAttendees = (attendeesList: Attendee[]): Attendee[] => {
-  // Sort stably by registeredAt or original order
-  const sorted = [...attendeesList].sort((a, b) => {
-    const timeA = a.registeredAt || '';
-    const timeB = b.registeredAt || '';
-    return timeA.localeCompare(timeB);
-  });
+  // Deduplicate by participantCode and unique name+phone
+  const seenCodes = new Set<string>();
+  const seenKeys = new Set<string>();
+  const deduplicated: Attendee[] = [];
 
-  return sorted.map((att, index) => {
-    const seqCode = `PCSHS-${String(index + 1).padStart(4, '0')}`;
-    return {
+  for (const att of attendeesList) {
+    const rawCode = (att.participantCode || '').trim();
+    const rawName = `${att.prefix || ''} ${att.firstName || ''} ${att.lastName || ''}`.trim().toLowerCase();
+    const rawPhone = (att.phone || '').trim();
+    const key = `${rawName}_${rawPhone}`;
+
+    if (rawCode && seenCodes.has(rawCode.toLowerCase())) {
+      continue; // skip duplicate code
+    }
+    if (rawName && rawPhone && rawPhone !== '0000000000' && seenKeys.has(key)) {
+      continue; // skip duplicate person
+    }
+
+    if (rawCode) seenCodes.add(rawCode.toLowerCase());
+    if (key !== '_') seenKeys.add(key);
+
+    deduplicated.push({
       ...att,
-      participantCode: seqCode,
-      qrCodeData: seqCode,
-    };
-  });
+      participantCode: rawCode || att.id,
+      qrCodeData: att.qrCodeData || rawCode || att.id,
+    });
+  }
+
+  return deduplicated;
 };
 
 // Base set of deleted attendee IDs (initial cleaned batches)
@@ -273,15 +286,20 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
 };
 
 export const saveAttendeeToFirestore = async (attendee: Attendee) => {
+  const codeStr = (attendee.participantCode || '').trim();
+  const nameStr = `${attendee.prefix || ''}_${attendee.firstName || ''}_${attendee.lastName || ''}`.trim();
+  
   const docId =
     attendee.id ||
-    (attendee.participantCode
-      ? `att_${attendee.participantCode.replace(/[^a-zA-Z0-9]/g, '_')}`
-      : `att_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+    (codeStr
+      ? `att_${codeStr.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_')}`
+      : `att_${nameStr.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_') || Date.now()}`);
 
   const dataToSave: Attendee = {
     ...attendee,
     id: docId,
+    participantCode: codeStr || docId,
+    qrCodeData: attendee.qrCodeData || codeStr || docId,
     updatedAt: new Date().toISOString(),
   };
 
@@ -299,8 +317,14 @@ export const saveAttendeeToFirestore = async (attendee: Attendee) => {
   return docId;
 };
 
-export const saveAllAttendeesToFirestore = async (attendeesList: Attendee[]) => {
+export const saveAllAttendeesToFirestore = async (
+  attendeesList: Attendee[],
+  replaceExisting: boolean = false
+) => {
   try {
+    if (replaceExisting) {
+      await clearAllAttendeesFromFirestore();
+    }
     for (const attendee of attendeesList) {
       await saveAttendeeToFirestore(attendee);
     }
