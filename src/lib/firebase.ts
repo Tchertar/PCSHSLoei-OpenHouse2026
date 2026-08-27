@@ -504,18 +504,48 @@ export const updateCoordinatorCheckInStatus = async (id: string, checkedIn: bool
 
 // --- SCHOOL STUDENTS / PARTICIPANTS BY SCHOOL (รายชื่อนักเรียน/ผู้เข้าร่วมของแต่ละโรงเรียนของผู้ประสานงาน) ---
 export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => void) => {
+  // 1. Immediately emit current local cache so UI is populated synchronously without blank delay
+  try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    if (raw) {
+      const parsed: SchoolStudent[] = JSON.parse(raw);
+      callback(parsed);
+    }
+  } catch (e) {
+    console.warn('Error reading initial school students cache:', e);
+  }
+
+  // 2. Listen to real-time updates from Firestore
   const q = query(collection(db, SCHOOL_STUDENTS_COLLECTION));
   return onSnapshot(
     q,
     (snapshot) => {
-      const list: SchoolStudent[] = [];
+      const remoteList: SchoolStudent[] = [];
       snapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() } as SchoolStudent);
+        remoteList.push({ id: docSnap.id, ...docSnap.data() } as SchoolStudent);
       });
+
+      // Merge with any offline pending items in local storage
       try {
-        localStorage.setItem('pcshs_school_students', JSON.stringify(list));
-      } catch {}
-      callback(list);
+        const raw = localStorage.getItem('pcshs_school_students');
+        const localList: SchoolStudent[] = raw ? JSON.parse(raw) : [];
+        const map = new Map<string, SchoolStudent>();
+        
+        // Remote first
+        remoteList.forEach((s) => map.set(s.id, s));
+        // Local items that might not have reached remote yet
+        localList.forEach((s) => {
+          if (!map.has(s.id)) {
+            map.set(s.id, s);
+          }
+        });
+
+        const merged = Array.from(map.values());
+        localStorage.setItem('pcshs_school_students', JSON.stringify(merged));
+        callback(merged);
+      } catch {
+        callback(remoteList);
+      }
     },
     (err) => {
       console.warn('Firestore school students subscription fallback:', err);
@@ -551,10 +581,10 @@ export const saveSchoolStudentToFirestore = async (student: SchoolStudent) => {
   try {
     const docRef = doc(db, SCHOOL_STUDENTS_COLLECTION, docId);
     await setDoc(docRef, dataToSave, { merge: true });
-    return docId;
+    return dataToSave;
   } catch (err) {
     console.warn('Note: Could not save student to Firestore remote, saved locally:', err);
-    return docId;
+    return dataToSave;
   }
 };
 
@@ -562,16 +592,54 @@ export const saveAllSchoolStudentsToFirestore = async (
   studentsList: SchoolStudent[],
   coordinatorId?: string,
   replaceExisting: boolean = false
-) => {
+): Promise<SchoolStudent[]> => {
   try {
+    const raw = localStorage.getItem('pcshs_school_students');
+    let list: SchoolStudent[] = raw ? JSON.parse(raw) : [];
     if (replaceExisting && coordinatorId) {
-      await clearSchoolStudentsByCoordinator(coordinatorId);
+      list = list.filter((s) => s.coordinatorId !== coordinatorId);
     }
-    for (const student of studentsList) {
-      await saveSchoolStudentToFirestore(student);
+
+    const preparedList: SchoolStudent[] = studentsList.map((stu, index) => {
+      const codeSafe = (stu.code || '').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+      const nameSafe = `${stu.firstName || ''}_${stu.lastName || ''}`.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+      const coordSafe = (stu.coordinatorId || coordinatorId || 'gen').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
+      const docId = stu.id || `stu_${coordSafe}_${codeSafe || nameSafe || Date.now()}_${index}`;
+      return {
+        ...stu,
+        id: docId,
+        coordinatorId: stu.coordinatorId || coordinatorId || '',
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    const map = new Map<string, SchoolStudent>();
+    list.forEach((item) => map.set(item.id, item));
+    preparedList.forEach((item) => map.set(item.id, item));
+    const merged = Array.from(map.values());
+    
+    // Save to local storage immediately
+    try {
+      localStorage.setItem('pcshs_school_students', JSON.stringify(merged));
+    } catch {}
+
+    // Parallel background write to Firestore
+    if (replaceExisting && coordinatorId) {
+      clearSchoolStudentsByCoordinator(coordinatorId).catch(() => {});
     }
+
+    const promises = preparedList.map((student) => {
+      const docRef = doc(db, SCHOOL_STUDENTS_COLLECTION, student.id);
+      return setDoc(docRef, student, { merge: true }).catch((err) => {
+        console.warn('Firestore write student fallback:', err);
+      });
+    });
+    
+    await Promise.all(promises);
+    return preparedList;
   } catch (err) {
     console.error('Error bulk saving school students:', err);
+    return studentsList;
   }
 };
 

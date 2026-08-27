@@ -62,6 +62,33 @@ const GRADE_OPTIONS = [
   'อื่นๆ (ระบุเอง)',
 ];
 
+// Helper to cleanly compare school names without prefixes like รร., โรงเรียน, spaces, punctuation
+export const cleanSchoolName = (name?: string): string => {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .replace(/^(โรงเรียน|รร\.|รร\s+)/gi, '')
+    .replace(/[\s\-_.,()]/g, '')
+    .trim();
+};
+
+export const isStudentOfCoordinator = (student: SchoolStudent, coordinator: Coordinator): boolean => {
+  if (!student || !coordinator) return false;
+  // 1. Direct ID / Code Match
+  if (student.coordinatorId) {
+    if (student.coordinatorId === coordinator.id) return true;
+    if (coordinator.code && student.coordinatorId.trim().toLowerCase() === coordinator.code.trim().toLowerCase()) return true;
+  }
+  // 2. School Name Match (robust against "รร. บ้านนาแขม จ.เลย" vs "บ้านนาแขม")
+  const stuSchool = cleanSchoolName(student.school);
+  const coordSchool = cleanSchoolName(coordinator.school);
+  if (stuSchool && coordSchool) {
+    if (stuSchool === coordSchool) return true;
+    if (coordSchool.includes(stuSchool) || stuSchool.includes(coordSchool)) return true;
+  }
+  return false;
+};
+
 export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
   coordinator,
   onClose,
@@ -90,7 +117,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
   // Subscribe to live school students
   useEffect(() => {
     const unsub = subscribeSchoolStudents((data) => {
-      if (data) {
+      if (data && Array.isArray(data)) {
         setAllStudents(data);
       }
     });
@@ -98,11 +125,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
   }, []);
 
   // Filter students belonging to this coordinator / school
-  const schoolStudents = allStudents.filter(
-    (s) =>
-      s.coordinatorId === coordinator.id ||
-      (coordinator.school && s.school && s.school.trim() === coordinator.school.trim())
-  );
+  const schoolStudents = allStudents.filter((s) => isStudentOfCoordinator(s, coordinator));
 
   // Search & Status Filter
   const filteredStudents = schoolStudents.filter((stu) => {
@@ -287,8 +310,17 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
           throw new Error('ไม่สามารถแปลงข้อมูลนักเรียนจากไฟล์ได้ กรุณาตรวจสอบหัวตารางให้ตรงกับเทมเพลต');
         }
 
-        // Bulk save
-        await saveAllSchoolStudentsToFirestore(parsedStudents, coordinator.id, false);
+        // Bulk save and update local state immediately
+        const savedStudents = await saveAllSchoolStudentsToFirestore(parsedStudents, coordinator.id, false);
+
+        setAllStudents((prev) => {
+          const map = new Map<string, SchoolStudent>();
+          prev.forEach((s) => map.set(s.id, s));
+          (savedStudents && savedStudents.length > 0 ? savedStudents : parsedStudents).forEach((s) =>
+            map.set(s.id, s)
+          );
+          return Array.from(map.values());
+        });
 
         setNotice({
           type: 'success',
@@ -354,6 +386,14 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
   // 4. Toggle single student attendance
   const handleToggleAttendance = async (student: SchoolStudent) => {
     const nextAttended = !student.attended;
+    const now = new Date().toISOString();
+    setAllStudents((prev) =>
+      prev.map((s) =>
+        s.id === student.id
+          ? { ...s, attended: nextAttended, attendedAt: nextAttended ? now : undefined }
+          : s
+      )
+    );
     await toggleStudentAttendanceInFirestore(student.id, nextAttended);
   };
 
@@ -367,6 +407,14 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
         `คุณต้องการเปลี่ยนสถานะนักเรียนจำนวน ${targetIds.length} คน ให้เป็น "${attended ? 'มา' : 'ยังไม่มา'}" หรือไม่?`
       )
     ) {
+      const now = new Date().toISOString();
+      setAllStudents((prev) =>
+        prev.map((s) =>
+          targetIds.includes(s.id)
+            ? { ...s, attended, attendedAt: attended ? now : undefined }
+            : s
+        )
+      );
       await batchUpdateSchoolStudentsAttendance(targetIds, attended);
     }
   };
@@ -380,6 +428,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
     ) {
       return;
     }
+    setAllStudents((prev) => prev.filter((s) => s.id !== student.id));
     await deleteSchoolStudentFromFirestore(student.id);
   };
 
@@ -392,6 +441,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
     ) {
       return;
     }
+    setAllStudents((prev) => prev.filter((s) => !isStudentOfCoordinator(s, coordinator)));
     await clearSchoolStudentsByCoordinator(coordinator.id);
   };
 
@@ -470,7 +520,14 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
         registeredAt: editingStudent ? editingStudent.registeredAt : new Date().toISOString(),
       };
 
-      await saveSchoolStudentToFirestore(studentData);
+      const saved = await saveSchoolStudentToFirestore(studentData);
+
+      setAllStudents((prev) => {
+        const map = new Map<string, SchoolStudent>();
+        prev.forEach((s) => map.set(s.id, s));
+        map.set(saved.id, saved);
+        return Array.from(map.values());
+      });
 
       setIsSubmitting(false);
       setIsFormOpen(false);

@@ -39,7 +39,7 @@ import {
   updateCoordinatorCheckInStatus,
   formatThaiPhoneNumber,
 } from '../lib/firebase';
-import { SchoolStudentsModal } from './SchoolStudentsModal';
+import { SchoolStudentsModal, isStudentOfCoordinator } from './SchoolStudentsModal';
 
 export const CoordinatorsManagementTab: React.FC = () => {
   const [coordinatorsList, setCoordinatorsList] = useState<Coordinator[]>([]);
@@ -800,11 +800,7 @@ export const CoordinatorsManagementTab: React.FC = () => {
                     {/* 5. รายชื่อนักเรียนของผู้ประสานงาน / โรงเรียนนี้ (Excel) */}
                     <td className="px-4 py-3 whitespace-nowrap">
                       {(() => {
-                        const myStudents = allStudentsList.filter(
-                          (s) =>
-                            s.coordinatorId === coord.id ||
-                            (coord.school && s.school && s.school.trim() === coord.school.trim())
-                        );
+                        const myStudents = allStudentsList.filter((s) => isStudentOfCoordinator(s, coord));
                         const count = myStudents.length;
                         const attended = myStudents.filter((s) => s.attended).length;
 
