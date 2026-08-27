@@ -8,6 +8,7 @@ import {
   Search,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   Home,
   QrCode,
@@ -82,7 +83,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   const [activeGroupTab, setActiveGroupTab] = useState<'group1' | 'group2'>('group1');
   const [attendeesList, setAttendeesList] = useState<Attendee[]>(initialAttendees);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn' | 'duplicates'>('all');
   const [isImporting, setIsImporting] = useState(false);
   const [importNotice, setImportNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -117,11 +118,37 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
     return () => unsub();
   }, []);
 
+  // Compute duplicate names count
+  const duplicateNameCounts = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const att of attendeesList) {
+      const first = (att.firstName || '').trim();
+      const last = (att.lastName || '').trim();
+      const nameKey = `${first} ${last}`.toLowerCase().replace(/\s+/g, ' ');
+      if (nameKey) {
+        counts.set(nameKey, (counts.get(nameKey) || 0) + 1);
+      }
+    }
+    return counts;
+  }, [attendeesList]);
+
+  // Count total duplicate records
+  const duplicateAttendeesCount = React.useMemo(() => {
+    return attendeesList.filter((att) => {
+      const nameKey = `${(att.firstName || '').trim()} ${(att.lastName || '').trim()}`.toLowerCase().replace(/\s+/g, ' ');
+      return (duplicateNameCounts.get(nameKey) || 0) > 1;
+    }).length;
+  }, [attendeesList, duplicateNameCounts]);
+
   // Filter attendees
   const filteredAttendees = attendeesList.filter((att) => {
-    // 1. Status Filter
+    // 1. Status / Duplicate Filter
     if (statusFilter === 'checkedIn' && !att.checkedIn) return false;
     if (statusFilter === 'notCheckedIn' && att.checkedIn) return false;
+    if (statusFilter === 'duplicates') {
+      const nameKey = `${(att.firstName || '').trim()} ${(att.lastName || '').trim()}`.toLowerCase().replace(/\s+/g, ' ');
+      if ((duplicateNameCounts.get(nameKey) || 0) <= 1) return false;
+    }
 
     // 2. Search query filter
     if (!searchQuery.trim()) return true;
@@ -989,6 +1016,21 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 >
                   ยังไม่เช็คอิน ({notCheckedInCount})
                 </button>
+                {duplicateAttendeesCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('duplicates')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                      statusFilter === 'duplicates'
+                        ? 'bg-amber-500 text-white shadow-2xs'
+                        : 'text-amber-800 bg-amber-100/70 hover:bg-amber-200/80'
+                    }`}
+                    title="แสดงเฉพาะรายชื่อที่ซ้ำกัน"
+                  >
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>รายชื่อซ้ำ ({duplicateAttendeesCount})</span>
+                  </button>
+                )}
               </div>
 
               {/* Search Bar */}
@@ -1029,6 +1071,25 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
             </div>
           </div>
 
+          {/* Duplicate Notice Alert Banner */}
+          {duplicateAttendeesCount > 0 && statusFilter !== 'duplicates' && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl flex items-center justify-between text-xs font-medium">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  ระบบตรวจพบรายชื่อที่ซ้ำกันทั้งหมด <strong>{duplicateAttendeesCount} รายการ</strong> (แถวที่มีไฮไลต์สีส้ม/เหลือง)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('duplicates')}
+                className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+              >
+                กรองเฉพาะรายชื่อซ้ำ
+              </button>
+            </div>
+          )}
+
           {/* Attendees Table */}
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="w-full text-left text-xs sm:text-sm text-slate-700">
@@ -1045,26 +1106,50 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredAttendees.map((att) => (
-                  <tr key={att.id} className="hover:bg-slate-50/80 transition-colors">
-                    
-                    {/* 1. รหัส */}
-                    <td className="px-4 py-3">
-                      <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md text-xs inline-block">
-                        {att.participantCode}
-                      </span>
-                    </td>
+                {filteredAttendees.map((att) => {
+                  const rawFirst = (att.firstName || '').trim();
+                  const rawLast = (att.lastName || '').trim();
+                  const nameKey = `${rawFirst} ${rawLast}`.toLowerCase().replace(/\s+/g, ' ');
+                  const duplicateCount = duplicateNameCounts.get(nameKey) || 0;
+                  const isDuplicate = duplicateCount > 1;
 
-                    {/* 2. ชื่อ */}
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>
-                          {att.prefix ? `${att.prefix} ` : ''}
-                          {att.firstName} {att.lastName}
+                  return (
+                    <tr
+                      key={att.id}
+                      className={`transition-colors ${
+                        isDuplicate
+                          ? 'bg-amber-50/70 hover:bg-amber-100/80 border-l-4 border-l-amber-500'
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {/* 1. รหัส */}
+                      <td className="px-4 py-3">
+                        <span className="font-mono font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md text-xs inline-block">
+                          {att.participantCode}
                         </span>
-                      </div>
-                    </td>
+                      </td>
+
+                      {/* 2. ชื่อ */}
+                      <td className="px-4 py-3 font-semibold text-slate-900">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <User className={`w-3.5 h-3.5 shrink-0 ${isDuplicate ? 'text-amber-600' : 'text-slate-400'}`} />
+                            <span className={isDuplicate ? 'text-amber-950 font-bold' : ''}>
+                              {att.prefix ? `${att.prefix} ` : ''}
+                              {att.firstName} {att.lastName}
+                            </span>
+                            {isDuplicate && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-200/90 border border-amber-400 text-amber-900 text-[10px] font-extrabold shadow-2xs"
+                                title={`พบรายชื่อนี้ซ้ำกัน ${duplicateCount} รายการในฐานข้อมูล`}
+                              >
+                                <AlertTriangle className="w-3 h-3 text-amber-700 shrink-0" />
+                                <span>ซ้ำ ({duplicateCount} รายการ)</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
 
                     {/* 3. ตำแหน่ง */}
                     <td className="px-4 py-3">
@@ -1160,7 +1245,8 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
 
                 {filteredAttendees.length === 0 && (
                   <tr>
