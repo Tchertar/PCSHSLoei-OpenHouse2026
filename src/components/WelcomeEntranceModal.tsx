@@ -1,11 +1,14 @@
 import React from 'react';
-import { QrCode, ScanLine, Globe, ArrowRight, Sparkles, X, ShieldCheck, ChevronRight, ExternalLink } from 'lucide-react';
+import { QrCode, ScanLine, Globe, Sparkles, X, Shield, Lock, ExternalLink, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { AdminUser } from '../types';
 
 interface WelcomeEntranceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenGetQrCode: () => void;
   onOpenAdminScanner: () => void;
+  currentAdmin?: AdminUser | null;
+  onOpenAdminLogin?: () => void;
 }
 
 export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
@@ -13,8 +16,24 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
   onClose,
   onOpenGetQrCode,
   onOpenAdminScanner,
+  currentAdmin = null,
+  onOpenAdminLogin,
 }) => {
   if (!isOpen) return null;
+
+  const handleAdminClick = () => {
+    if (currentAdmin) {
+      // Already authenticated as admin
+      onOpenAdminScanner();
+    } else {
+      // NOT an admin yet -> Require admin login
+      if (onOpenAdminLogin) {
+        onOpenAdminLogin();
+      } else {
+        onOpenAdminScanner();
+      }
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto animate-in fade-in duration-300">
@@ -38,7 +57,6 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
               alt="PCSHS Loei Logo"
               className="w-full h-full object-contain drop-shadow-sm"
               onError={(e) => {
-                // Fallback to QR icon if image fails
                 (e.target as HTMLElement).style.display = 'none';
               }}
             />
@@ -62,7 +80,7 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
         {/* 3 Main Action Buttons */}
         <div className="space-y-3.5 text-left">
           
-          {/* BUTTON 1: รับ QRCode (ตรงกลาง & โดดเด่นที่สุด) */}
+          {/* BUTTON 1: รับ QRCode (สำหรับผู้เข้าร่วมงานทุกคน - แนะนำ) */}
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 rounded-2xl blur-xs opacity-60 group-hover:opacity-100 transition duration-300 animate-pulse"></div>
             <button
@@ -94,32 +112,66 @@ export const WelcomeEntranceModal: React.FC<WelcomeEntranceModalProps> = ({
             </button>
           </div>
 
-          {/* BUTTON 2: จัดการข้อมูล สำหรับแอดมิน */}
+          {/* BUTTON 2: จัดการข้อมูล สำหรับแอดมิน (ป้องกันการเข้าถึงของบุคคลภายนอก) */}
           <button
             type="button"
-            onClick={onOpenAdminScanner}
-            className="w-full p-3.5 sm:p-4 bg-slate-50 hover:bg-slate-100/90 border-2 border-slate-200 hover:border-slate-300 rounded-2xl text-slate-800 transition-all duration-200 cursor-pointer flex items-center justify-between group hover:shadow-md"
+            onClick={handleAdminClick}
+            className={`w-full p-3.5 sm:p-4 border-2 rounded-2xl transition-all duration-200 cursor-pointer flex items-center justify-between group hover:shadow-md ${
+              currentAdmin
+                ? 'bg-amber-50/70 hover:bg-amber-100/80 border-amber-300 text-amber-950'
+                : 'bg-slate-50 hover:bg-slate-100/90 border-slate-200 hover:border-slate-300 text-slate-800'
+            }`}
           >
             <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0 text-blue-600">
-                <ScanLine className="w-5 h-5" />
+              <div
+                className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
+                  currentAdmin
+                    ? 'bg-amber-100 border-amber-300 text-amber-700'
+                    : 'bg-slate-100 border-slate-300 text-slate-600'
+                }`}
+              >
+                {currentAdmin ? (
+                  <ScanLine className="w-5 h-5" />
+                ) : (
+                  <Lock className="w-5 h-5 text-slate-500" />
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm sm:text-base font-bold text-slate-900">
                     2. จัดการข้อมูล สำหรับแอดมิน
                   </span>
-                  <span className="px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">
-                    Admin
-                  </span>
+                  {currentAdmin ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-bold rounded-full">
+                      <CheckCircle2 className="w-3 h-3 text-amber-700" />
+                      <span>{currentAdmin.username}</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-200 text-slate-700 text-[10px] font-bold rounded">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>Admin Only</span>
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  ระบบสแกนเช็คชื่อและตรวจสอบรายชื่อผู้เข้าร่วม
+                  {currentAdmin
+                    ? 'เข้าสู่ระบบสแกนเช็คชื่อและจัดการรายชื่อ'
+                    : 'เฉพาะครู/เจ้าหน้าที่ผู้ดูแลระบบ (ต้องระบุรหัสผ่าน)'}
                 </p>
               </div>
             </div>
-            <div className="w-7 h-7 rounded-full bg-slate-200/80 flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform text-slate-600">
-              <ExternalLink className="w-3.5 h-3.5" />
+            <div
+              className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform ${
+                currentAdmin
+                  ? 'bg-amber-200 text-amber-800'
+                  : 'bg-slate-200/80 text-slate-600'
+              }`}
+            >
+              {currentAdmin ? (
+                <ExternalLink className="w-3.5 h-3.5" />
+              ) : (
+                <Lock className="w-3.5 h-3.5" />
+              )}
             </div>
           </button>
 

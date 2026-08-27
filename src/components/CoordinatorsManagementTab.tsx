@@ -36,6 +36,7 @@ import {
   saveAllCoordinatorsToFirestore,
   deleteCoordinatorFromFirestore,
   clearAllCoordinatorsFromFirestore,
+  clearAllSchoolStudentsFromFirestore,
   updateCoordinatorCheckInStatus,
   formatThaiPhoneNumber,
 } from '../lib/firebase';
@@ -451,15 +452,27 @@ export const CoordinatorsManagementTab: React.FC = () => {
   const handleClearAll = async () => {
     if (
       confirm(
-        '⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างฐานข้อมูลผู้ประสานงานทั้งหมด? การดำเนินการนี้ไม่สามารถยกเลิกได้'
+        '⚠️ คุณแน่ใจหรือไม่ว่าต้องการล้างฐานข้อมูลผู้ประสานงานและรายชื่อนักเรียนทั้งหมด? การดำเนินการนี้ไม่สามารถยกเลิกได้'
       )
     ) {
-      await clearAllCoordinatorsFromFirestore();
-      setCoordinatorsList([]);
-      setImportNotice({
-        type: 'success',
-        message: 'ล้างฐานข้อมูลผู้ประสานงานเรียบร้อยแล้ว',
-      });
+      setIsImporting(true);
+      try {
+        await clearAllCoordinatorsFromFirestore();
+        await clearAllSchoolStudentsFromFirestore();
+        setCoordinatorsList([]);
+        setAllStudentsList([]);
+        setImportNotice({
+          type: 'success',
+          message: 'ล้างฐานข้อมูลผู้ประสานงานและรายชื่อนักเรียนทั้งหมดเรียบร้อยแล้ว',
+        });
+      } catch (err) {
+        setImportNotice({
+          type: 'error',
+          message: 'เกิดข้อผิดพลาดในการล้างฐานข้อมูล กรุณาลองใหม่อีกครั้ง',
+        });
+      } finally {
+        setIsImporting(false);
+      }
     }
   };
 

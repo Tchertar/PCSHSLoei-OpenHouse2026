@@ -8,7 +8,8 @@ import {
   onSnapshot, 
   query,
   getDocs,
-  getDocFromServer
+  getDocFromServer,
+  writeBatch
 } from 'firebase/firestore';
 import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration, SchoolStudent } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -212,6 +213,9 @@ export const subscribeAttendees = (callback: (data: Attendee[]) => void) => {
 };
 
 export const saveAttendeeToFirestore = async (attendee: Attendee) => {
+  try {
+    localStorage.removeItem('pcshs_attendees_cleared');
+  } catch {}
   const codeStr = (attendee.participantCode || '').trim();
   const nameStr = `${attendee.prefix || ''}_${attendee.firstName || ''}_${attendee.lastName || ''}`.trim();
   
@@ -274,19 +278,45 @@ export const deleteAttendeeFromFirestore = async (id: string) => {
   }
 };
 
+/**
+ * Helper to delete all documents in a collection safely in batches of 400
+ */
+export const deleteCollectionInBatches = async (collectionName: string) => {
+  try {
+    const colRef = collection(db, collectionName);
+    const snapshot = await getDocs(query(colRef));
+    if (snapshot.empty) return;
+
+    const docs = snapshot.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const batch = writeBatch(db);
+      const chunk = docs.slice(i, i + 400);
+      chunk.forEach((docSnap) => {
+        batch.delete(docSnap.ref);
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn(`Error batch deleting collection ${collectionName}, running direct fallback:`, err);
+    try {
+      const snapshot = await getDocs(query(collection(db, collectionName)));
+      const deletePromises = snapshot.docs.map((docSnap) =>
+        deleteDoc(doc(db, collectionName, docSnap.id)).catch(() => {})
+      );
+      await Promise.all(deletePromises);
+    } catch {}
+  }
+};
+
 export const clearAllAttendeesFromFirestore = async () => {
   try {
-    localStorage.removeItem('pcshs_attendees');
-    localStorage.removeItem('pcshs_locally_saved_attendees');
-    localStorage.setItem('pcshs_deleted_attendee_ids', JSON.stringify([]));
+    localStorage.setItem('pcshs_attendees', '[]');
+    localStorage.setItem('pcshs_locally_saved_attendees', '{}');
+    localStorage.setItem('pcshs_deleted_attendee_ids', '[]');
+    localStorage.setItem('pcshs_attendees_cleared', 'true');
 
-    // Delete remote documents
-    const q = query(collection(db, ATTENDEES_COLLECTION));
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map((docSnap) =>
-      deleteDoc(doc(db, ATTENDEES_COLLECTION, docSnap.id)).catch(() => {})
-    );
-    await Promise.all(deletePromises);
+    // Delete remote documents thoroughly
+    await deleteCollectionInBatches(ATTENDEES_COLLECTION);
   } catch (err) {
     console.error('Error clearing all attendees:', err);
   }
@@ -394,6 +424,9 @@ export const subscribeCoordinators = (callback: (data: Coordinator[]) => void) =
 };
 
 export const saveCoordinatorToFirestore = async (coordinator: Coordinator) => {
+  try {
+    localStorage.removeItem('pcshs_coordinators_cleared');
+  } catch {}
   const codeStr = (coordinator.code || '').trim();
   const nameStr = (coordinator.name || '').trim();
   const docId =
@@ -465,15 +498,21 @@ export const deleteCoordinatorFromFirestore = async (id: string) => {
 
 export const clearAllCoordinatorsFromFirestore = async () => {
   try {
-    localStorage.removeItem('pcshs_coordinators');
-    const q = query(collection(db, COORDINATORS_COLLECTION));
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map((docSnap) =>
-      deleteDoc(doc(db, COORDINATORS_COLLECTION, docSnap.id)).catch(() => {})
-    );
-    await Promise.all(deletePromises);
+    localStorage.setItem('pcshs_coordinators', '[]');
+    localStorage.setItem('pcshs_coordinators_cleared', 'true');
+    await deleteCollectionInBatches(COORDINATORS_COLLECTION);
   } catch (err) {
     console.warn('Error clearing coordinators from Firestore:', err);
+  }
+};
+
+export const clearAllSchoolStudentsFromFirestore = async () => {
+  try {
+    localStorage.setItem('pcshs_school_students', '[]');
+    localStorage.setItem('pcshs_school_students_cleared', 'true');
+    await deleteCollectionInBatches(SCHOOL_STUDENTS_COLLECTION);
+  } catch (err) {
+    console.warn('Error clearing school students from Firestore:', err);
   }
 };
 
@@ -507,24 +546,22 @@ export const updateCoordinatorCheckInStatus = async (id: string, checkedIn: bool
 
 // --- SCHOOL STUDENTS / PARTICIPANTS BY SCHOOL (รายชื่อนักเรียน/ผู้เข้าร่วมของแต่ละโรงเรียนของผู้ประสานงาน) ---
 export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => void) => {
-  // 1. Immediately emit current local cache so UI is populated synchronously without blank delay
+  const isCleared = localStorage.getItem('pcshs_school_students_cleared') === 'true';
+
+  // 1. Immediately emit current local cache if present
   try {
     const raw = localStorage.getItem('pcshs_school_students');
     if (raw) {
       const parsed: SchoolStudent[] = JSON.parse(raw);
-      if (parsed && parsed.length > 0) {
-        callback(parsed);
-      } else if (defaultSchoolStudents.length > 0) {
-        callback(defaultSchoolStudents);
-      }
-    } else if (defaultSchoolStudents.length > 0) {
+      callback(parsed || []);
+    } else if (!isCleared && defaultSchoolStudents.length > 0) {
       callback(defaultSchoolStudents);
+    } else {
+      callback([]);
     }
   } catch (e) {
     console.warn('Error reading initial school students cache:', e);
-    if (defaultSchoolStudents.length > 0) {
-      callback(defaultSchoolStudents);
-    }
+    callback([]);
   }
 
   // 2. Listen to real-time updates from Firestore
@@ -537,40 +574,29 @@ export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => voi
         remoteList.push({ id: docSnap.id, ...docSnap.data() } as SchoolStudent);
       });
 
-      // Merge with any offline pending items in local storage
+      // Keep cache updated with remote data
       try {
-        const raw = localStorage.getItem('pcshs_school_students');
-        const localList: SchoolStudent[] = raw ? JSON.parse(raw) : [];
-        const map = new Map<string, SchoolStudent>();
-        
-        // Remote first
-        remoteList.forEach((s) => map.set(s.id, s));
-        // Local items that might not have reached remote yet
-        localList.forEach((s) => {
-          if (!map.has(s.id)) {
-            map.set(s.id, s);
-          }
-        });
-
-        const merged = Array.from(map.values());
-        localStorage.setItem('pcshs_school_students', JSON.stringify(merged));
-        callback(merged);
-      } catch {
-        callback(remoteList);
-      }
+        localStorage.setItem('pcshs_school_students', JSON.stringify(remoteList));
+      } catch {}
+      callback(remoteList);
     },
     (err) => {
       console.warn('Firestore school students subscription fallback:', err);
       try {
         const raw = localStorage.getItem('pcshs_school_students');
         if (raw) callback(JSON.parse(raw));
-        else if (defaultSchoolStudents.length > 0) callback(defaultSchoolStudents);
-      } catch {}
+        else callback([]);
+      } catch {
+        callback([]);
+      }
     }
   );
 };
 
 export const saveSchoolStudentToFirestore = async (student: SchoolStudent) => {
+  try {
+    localStorage.removeItem('pcshs_school_students_cleared');
+  } catch {}
   const codeSafe = (student.code || '').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
   const nameSafe = `${student.firstName || ''}_${student.lastName || ''}`.replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
   const coordSafe = (student.coordinatorId || 'gen').replace(/[^a-zA-Z0-9_\u0E00-\u0E7F-]/g, '_');
@@ -794,6 +820,9 @@ export const subscribeNewRegistrations = (callback: (data: NewUserRegistration[]
 };
 
 export const saveNewRegistrationToFirestore = async (item: NewUserRegistration) => {
+  try {
+    localStorage.removeItem('pcshs_new_registrations_cleared');
+  } catch {}
   const codeStr = (item.code || '').trim();
   const docId =
     item.id ||
@@ -868,13 +897,9 @@ export const deleteNewRegistrationFromFirestore = async (id: string) => {
 
 export const clearAllNewRegistrationsFromFirestore = async () => {
   try {
-    localStorage.removeItem('pcshs_new_registrations');
-    const q = query(collection(db, NEW_REGISTRATIONS_COLLECTION));
-    const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map((docSnap) =>
-      deleteDoc(doc(db, NEW_REGISTRATIONS_COLLECTION, docSnap.id)).catch(() => {})
-    );
-    await Promise.all(deletePromises);
+    localStorage.setItem('pcshs_new_registrations', '[]');
+    localStorage.setItem('pcshs_new_registrations_cleared', 'true');
+    await deleteCollectionInBatches(NEW_REGISTRATIONS_COLLECTION);
   } catch (err) {
     console.warn('Error clearing new registrations from Firestore:', err);
   }

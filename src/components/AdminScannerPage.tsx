@@ -95,15 +95,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
   onLogout,
 }) => {
   // Admin Authentication State
-  const [localAdmin, setLocalAdmin] = useState<AdminUser | null>(() => {
-    if (propAdmin) return propAdmin;
-    try {
-      const saved = localStorage.getItem('pcshs_current_admin');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [localAdmin, setLocalAdmin] = useState<AdminUser | null>(propAdmin);
 
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -112,9 +104,7 @@ export const AdminScannerPage: React.FC<AdminScannerPageProps> = ({
 
   // Sync propAdmin if changed
   useEffect(() => {
-    if (propAdmin) {
-      setLocalAdmin(propAdmin);
-    }
+    setLocalAdmin(propAdmin);
   }, [propAdmin]);
 
   const activeAdmin = propAdmin || localAdmin;

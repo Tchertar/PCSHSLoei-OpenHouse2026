@@ -228,9 +228,15 @@ export default function App() {
 
   const handleOpenAdminScanner = () => {
     setIsEntranceModalOpen(false);
-    setCurrentView('admin-scanner');
-    window.history.pushState({}, '', `${window.location.pathname}?page=admin-scanner`);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (!currentAdmin) {
+      // Non-admin users must log in with Admin credentials first
+      setLoginInitialTab('admin');
+      setIsLoginOpen(true);
+    } else {
+      setCurrentView('admin-scanner');
+      window.history.pushState({}, '', `${window.location.pathname}?page=admin-scanner`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleBackToHome = () => {
@@ -368,13 +374,21 @@ export default function App() {
 
   const handleAdminLoginSuccess = (admin: AdminUser) => {
     setCurrentAdmin(admin);
+    try {
+      localStorage.setItem('pcshs_current_admin', JSON.stringify(admin));
+    } catch {}
     setIsLoginOpen(false);
-    setIsAdminDashboardOpen(true);
-    addAuditLog('เข้าสู่ระบบ Admin', `แอดมิน ${admin.username} เข้าสู่ระบบสำเร็จ`);
+    setCurrentView('admin-scanner');
+    window.history.pushState({}, '', `${window.location.pathname}?page=admin-scanner`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    addAuditLog('เข้าสู่ระบบ Admin', `แอดมิน ${admin.username} (${admin.name || ''}) เข้าสู่ระบบจัดการข้อมูลสำเร็จ`);
   };
 
   const handleAttendeeLoginSuccess = (attendee: Attendee) => {
     setCurrentAttendee(attendee);
+    try {
+      localStorage.setItem('pcshs_current_attendee', JSON.stringify(attendee));
+    } catch {}
     setIsLoginOpen(false);
     setIsProfileOpen(true);
   };
@@ -412,8 +426,17 @@ export default function App() {
     logoutGoogleUser();
     setCurrentAttendee(null);
     setCurrentAdmin(null);
+    try {
+      localStorage.removeItem('pcshs_current_attendee');
+      localStorage.removeItem('pcshs_current_admin');
+    } catch {}
     setIsAdminDashboardOpen(false);
     setIsProfileOpen(false);
+    if (currentView === 'admin-scanner') {
+      setCurrentView('home');
+      window.history.pushState({}, '', window.location.pathname);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   if (currentView === 'get-qr') {
@@ -609,6 +632,8 @@ export default function App() {
         onClose={() => setIsEntranceModalOpen(false)}
         onOpenGetQrCode={handleOpenGetQrCode}
         onOpenAdminScanner={handleOpenAdminScanner}
+        currentAdmin={currentAdmin}
+        onOpenAdminLogin={handleOpenAdminLogin}
       />
     </div>
   );
