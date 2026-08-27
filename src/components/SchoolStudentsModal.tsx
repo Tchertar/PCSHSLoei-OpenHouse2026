@@ -74,14 +74,26 @@ export const cleanSchoolName = (name?: string): string => {
 
 export const isStudentOfCoordinator = (student: SchoolStudent, coordinator: Coordinator): boolean => {
   if (!student || !coordinator) return false;
-  // 1. Direct Coordinator ID / Code Match
+
+  const coordCode = (coordinator.code || coordinator.id.replace(/^coord_/, '')).trim().toUpperCase();
+  
+  // 1. Primary rule: Match by 4-character code prefix (e.g. 'OH01' from 'OH0101' -> matches 'OH01')
+  const stuCodePrefix = (student.code || '').trim().substring(0, 4).toUpperCase();
+  if (coordCode && stuCodePrefix && stuCodePrefix.startsWith('OH')) {
+    return stuCodePrefix === coordCode;
+  }
+
+  // 2. Direct Coordinator ID / Code Match
   if (student.coordinatorId) {
-    if (student.coordinatorId === coordinator.id) return true;
-    if (coordinator.code && student.coordinatorId.trim().toLowerCase() === coordinator.code.trim().toLowerCase()) return true;
-    // If student is already bound to a specific coordinator, do NOT leak to other coordinators
+    const stuCoord = student.coordinatorId.trim();
+    if (stuCoord === coordinator.id) return true;
+    if (coordCode && stuCoord.toUpperCase() === coordCode) return true;
+    if (coordCode && stuCoord.replace(/^coord_/, '').toUpperCase() === coordCode) return true;
+    if (coordinator.id && stuCoord.toLowerCase() === coordinator.id.toLowerCase()) return true;
     return false;
   }
-  // 2. Legacy fallback only if student has NO coordinatorId at all
+
+  // 3. Fallback only if student has no coordinator ID and no OH prefix
   const stuSchool = cleanSchoolName(student.school);
   const coordSchool = cleanSchoolName(coordinator.school);
   if (stuSchool && coordSchool) {
@@ -139,7 +151,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
     const prefixMatch = (stu.prefix || '').toLowerCase().includes(q);
     const firstMatch = (stu.firstName || '').toLowerCase().includes(q);
     const lastMatch = (stu.lastName || '').toLowerCase().includes(q);
-    const gradeMatch = (stu.gradeLevel || '').toLowerCase().includes(q);
+    const gradeMatch = (stu.gradeLevel || stu.grade || '').toLowerCase().includes(q);
     const fullName = `${stu.prefix || ''}${stu.firstName || ''} ${stu.lastName || ''}`.toLowerCase();
 
     return codeMatch || prefixMatch || firstMatch || lastMatch || gradeMatch || fullName.includes(q);
@@ -359,7 +371,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
       คำนำหน้า: stu.prefix || '',
       ชื่อ: stu.firstName || '-',
       นามสกุล: stu.lastName || '-',
-      ระดับชั้น: stu.gradeLevel || '-',
+      ระดับชั้น: stu.gradeLevel || stu.grade || '-',
       โรงเรียน: stu.school || coordinator.school || '-',
       สถานะการเข้าร่วม: stu.attended ? 'มา' : 'ยังไม่มา',
       เวลาที่เช็คชื่อ: stu.attendedAt || '-',
@@ -476,12 +488,13 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
     setFirstName(stu.firstName || '');
     setLastName(stu.lastName || '');
 
-    if (GRADE_OPTIONS.includes(stu.gradeLevel || '')) {
-      setGradeLevel(stu.gradeLevel || 'มัธยมศึกษาปีที่ 1 (ม.1)');
+    const rawStuGrade = stu.gradeLevel || stu.grade || '';
+    if (GRADE_OPTIONS.includes(rawStuGrade)) {
+      setGradeLevel(rawStuGrade || 'มัธยมศึกษาปีที่ 1 (ม.1)');
       setCustomGrade('');
     } else {
       setGradeLevel('อื่นๆ (ระบุเอง)');
-      setCustomGrade(stu.gradeLevel || '');
+      setCustomGrade(rawStuGrade);
     }
 
     setFormError('');
@@ -865,7 +878,7 @@ export const SchoolStudentsModal: React.FC<SchoolStudentsModalProps> = ({
                     {/* ระดับชั้น */}
                     <td className="px-3 py-2 whitespace-nowrap">
                       <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-md font-medium text-xs">
-                        {stu.gradeLevel || '-'}
+                        {stu.gradeLevel || stu.grade || '-'}
                       </span>
                     </td>
 

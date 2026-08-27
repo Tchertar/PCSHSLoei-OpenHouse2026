@@ -73,7 +73,8 @@ export interface SchoolStudent {
   prefix: string; // คำนำหน้า (ด.ช., ด.ญ., นาย, นางสาว, อื่นๆ)
   firstName: string; // ชื่อ
   lastName: string; // นามสกุล
-  gradeLevel: string; // ระดับชั้น (เช่น ม.1, ม.2, ม.3, ม.4, ม.5, ม.6, ป.6 ฯลฯ)
+  gradeLevel?: string; // ระดับชั้น (เช่น ม.1, ม.2, ม.3, ม.4, ม.5, ม.6, ป.6 ฯลฯ)
+  grade?: string;
   attended: boolean; // เช็คบ็อกซ์ติ๊กว่ามาหรือไม่มา (true = มา, false = ไม่มา)
   attendedAt?: string; // เวลาที่บันทึกว่ามา
   registeredAt?: string;

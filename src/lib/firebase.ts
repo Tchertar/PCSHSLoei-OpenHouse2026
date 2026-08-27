@@ -12,6 +12,9 @@ import {
 } from 'firebase/firestore';
 import { ActivityItem, AdminUser, Attendee, AuditLog, Coordinator, NewUserRegistration, SchoolStudent } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
+import defaultSchoolStudentsData from '../data/schoolStudentsData.json';
+
+const defaultSchoolStudents = (defaultSchoolStudentsData || []) as SchoolStudent[];
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
@@ -509,10 +512,19 @@ export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => voi
     const raw = localStorage.getItem('pcshs_school_students');
     if (raw) {
       const parsed: SchoolStudent[] = JSON.parse(raw);
-      callback(parsed);
+      if (parsed && parsed.length > 0) {
+        callback(parsed);
+      } else if (defaultSchoolStudents.length > 0) {
+        callback(defaultSchoolStudents);
+      }
+    } else if (defaultSchoolStudents.length > 0) {
+      callback(defaultSchoolStudents);
     }
   } catch (e) {
     console.warn('Error reading initial school students cache:', e);
+    if (defaultSchoolStudents.length > 0) {
+      callback(defaultSchoolStudents);
+    }
   }
 
   // 2. Listen to real-time updates from Firestore
@@ -552,6 +564,7 @@ export const subscribeSchoolStudents = (callback: (data: SchoolStudent[]) => voi
       try {
         const raw = localStorage.getItem('pcshs_school_students');
         if (raw) callback(JSON.parse(raw));
+        else if (defaultSchoolStudents.length > 0) callback(defaultSchoolStudents);
       } catch {}
     }
   );
